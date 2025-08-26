@@ -1,0 +1,17 @@
+"""Routers package."""
+
+from fastapi import APIRouter
+
+from . import auth, materials, quizzes, results, reports, ai, progress
+
+
+api_router = APIRouter()
+api_router.include_router(auth.router, prefix="/auth", tags=["auth"])
+api_router.include_router(materials.router, prefix="/materials", tags=["materials"])
+api_router.include_router(quizzes.router, prefix="/quizzes", tags=["quizzes"])
+api_router.include_router(results.router, prefix="/results", tags=["results"])
+api_router.include_router(reports.router, prefix="/reports", tags=["reports"])
+api_router.include_router(ai.router, prefix="/ai", tags=["ai"])
+api_router.include_router(progress.router, prefix="/progress", tags=["progress"])
+
+
