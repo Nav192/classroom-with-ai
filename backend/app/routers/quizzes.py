@@ -64,3 +64,27 @@ def create_quiz(payload: CreateQuizRequest):
 		raise HTTPException(status_code=400, detail=str(exc))
 
 
+
+@router.get("")
+def list_quizzes(class_id: str | None = None, topic: str | None = None):
+	sb = get_supabase()
+	q = sb.table("quizzes").select("*")
+	if class_id:
+		q = q.eq("class_id", class_id)
+	if topic:
+		q = q.eq("topic", topic)
+	return q.execute().data
+
+
+@router.get("/{quiz_id}")
+def get_quiz(quiz_id: str):
+	sb = get_supabase()
+	try:
+		quiz = sb.table("quizzes").select("*").eq("id", quiz_id).single().execute().data
+		if not quiz:
+			raise HTTPException(status_code=404, detail="Quiz not found")
+		qs = sb.table("questions").select("*").eq("quiz_id", quiz_id).execute().data
+		return {"quiz": quiz, "questions": qs or []}
+	except Exception as exc:  # noqa: BLE001
+		raise HTTPException(status_code=400, detail=str(exc))
+
