@@ -1,11 +1,8 @@
-import os
 from supabase import create_client, Client
-from dotenv import load_dotenv
+from app.config import settings
 
-load_dotenv()
-
-url: str = os.environ.get("SUPABASE_URL")
-key: str = os.environ.get("SUPABASE_KEY")
+url: str = settings.SUPABASE_URL
+key: str = settings.supabase_anon_key
 
 if not url or not key:
     raise ValueError("Supabase URL and Key must be set in the .env file")

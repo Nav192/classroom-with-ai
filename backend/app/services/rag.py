@@ -1,33 +1,92 @@
-from typing import List, Dict, Any
+import io
+import google.generativeai as genai
+from supabase import Client
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+from unstructured.partition.auto import partition # DITAMBAHKAN
+
+from ..config import settings
+
+# Konfigurasi Gemini
+try:
+    genai.configure(api_key=settings.gemini_api_key)
+except Exception as e:
+    print(f"Tidak dapat mengkonfigurasi Gemini API key: {e}")
 
 
-def extract_text_from_document(file_bytes: bytes, file_type: str) -> str:
-	"""Stub for document parsing. Implement PDF/PPT/TXT parsing."""
-	# TODO: integrate pypdf, python-pptx, or unstructured
-	return ""
+def get_text_from_file(file_content: bytes, mime_type: str) -> str:
+    """Mengekstrak teks dari konten byte sebuah file menggunakan unstructured."""
+    # Sepenuhnya mengandalkan unstructured untuk mem-parsing berbagai jenis dokumen
+    try:
+        elements = partition(file=io.BytesIO(file_content), content_type=mime_type)
+        return "\n".join([str(el) for el in elements])
+    except Exception as e:
+        print(f"Error mengekstrak teks dengan unstructured untuk mime_type {mime_type}: {e}")
+        return ""
 
 
-def embed_text_chunks(chunks: List[str]) -> List[List[float]]:
-	"""Stub for embedding generation using Gemini or other model."""
-	# TODO: call embedding API and return vectors
-	return [[0.0 for _ in range(768)] for _ in chunks]
+def chunk_text(text: str, chunk_size: int = 1000, chunk_overlap: int = 200) -> list[str]:
+    """Memecah teks menjadi potongan-potongan yang saling tumpang tindih."""
+    text_splitter = RecursiveCharacterTextSplitter(
+        chunk_size=chunk_size,
+        chunk_overlap=chunk_overlap,
+        length_function=len,
+    )
+    return text_splitter.split_text(text)
 
 
-def upsert_embeddings(vectors: List[List[float]], metadatas: List[Dict[str, Any]]):
-	"""Stub for storing vectors into Supabase pgvector table."""
-	# TODO: insert into supabase table `material_embeddings`
-	return None
+def generate_embeddings(text_chunks: list[str]) -> list[list[float]]:
+    """Membuat embeddings untuk daftar potongan teks menggunakan Gemini."""
+    if not text_chunks:
+        return []
+    model = 'models/embedding-004'
+    result = genai.embed_content(model=model, content=text_chunks, task_type="retrieval_document")
+    return result['embedding']
 
+def process_material_for_rag(material_id: str, storage_path: str, sb: Client):
+    """Fungsi utama pipeline RAG untuk dijalankan di background."""
+    print(f"Memulai pemrosesan RAG untuk material_id: {material_id}")
+    try:
+        # 1. Unduh file dari Supabase Storage
+        meta_res = sb.table("materials").select("mime_type").eq("id", material_id).single().execute()
+        if not meta_res.data:
+            print(f"Error: Materi dengan ID {material_id} tidak ditemukan.")
+            return
+        mime_type = meta_res.data['mime_type']
+        
+        file_content = sb.storage.from_("materials").download(storage_path)
+        if not file_content:
+            print(f"Error: Tidak dapat mengunduh file dari {storage_path}")
+            return
 
-def retrieve_relevant_chunks(query: str, top_k: int = 5) -> List[Dict[str, Any]]:
-	"""Stub for similarity search over embeddings."""
-	# TODO: perform similarity search in Supabase
-	return []
+        # 2. Ekstrak teks
+        text = get_text_from_file(file_content, mime_type)
+        if not text:
+            print(f"Peringatan: Tidak ada teks yang diekstrak dari materi {material_id}.")
+            return
 
+        # 3. Pecah teks menjadi chunks
+        chunks = chunk_text(text)
+        if not chunks:
+            print(f"Peringatan: Teks tidak dapat dipecah menjadi chunks untuk materi {material_id}.")
+            return
 
-def answer_with_gemini(query: str, contexts: List[str]) -> str:
-	"""Stub for calling Gemini to answer with provided contexts."""
-	# TODO: call Gemini chat/completions with system prompt + contexts
-	return ""
+        # 4. Buat embeddings
+        embeddings = generate_embeddings(chunks)
 
+        # 5. Simpan ke tabel material_embeddings
+        rows_to_insert = [
+            {
+                "material_id": material_id,
+                "chunk_index": i,
+                "text": chunk,
+                "embedding": embedding,
+            }
+            for i, (chunk, embedding) in enumerate(zip(chunks, embeddings))
+        ]
+        
+        sb.table("material_embeddings").insert(rows_to_insert).execute()
+        
+        print(f"Berhasil memproses dan meng-embed materi {material_id}")
 
+    except Exception as e:
+        print(f"Error memproses materi {material_id} untuk RAG: {e}")

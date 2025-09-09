@@ -1,50 +1,63 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, status, Depends
 from pydantic import BaseModel, EmailStr
+from supabase import Client
 
 from ..dependencies import get_supabase
-
 
 router = APIRouter()
 
 
 class LoginRequest(BaseModel):
-	email: EmailStr
-	password: str
+    email: EmailStr
+    password: str
 
 
 class LoginResponse(BaseModel):
-	access_token: str
-	user_id: str
+    access_token: str
+    user_id: str
+    role: str
 
 
 class RegisterRequest(BaseModel):
-	email: EmailStr
-	password: str
-	role: str  # "teacher" | "student"
+    email: EmailStr
+    password: str
+    role: str  # "teacher" | "student" | "admin"
 
 
 @router.post("/login", response_model=LoginResponse)
-def login(payload: LoginRequest):
-	sb = get_supabase()
-	try:
-		res = sb.auth.sign_in_with_password({"email": payload.email, "password": payload.password})
-		user = res.user
-		session = res.session
-		if user is None or session is None or session.access_token is None:
-			raise HTTPException(status_code=401, detail="Invalid credentials")
-		return LoginResponse(access_token=session.access_token, user_id=user.id)
-	except Exception as exc:  # noqa: BLE001
-		raise HTTPException(status_code=401, detail=str(exc))
+def login(payload: LoginRequest, sb: Client = Depends(get_supabase)):
+    try:
+        res = sb.auth.sign_in_with_password({"email": payload.email, "password": payload.password})
+        if res.user is None or res.session is None or res.session.access_token is None:
+            raise HTTPException(status_code=401, detail="Invalid credentials")
+
+        # Get role from our public.profiles table
+        profile = sb.table("profiles").select("role").eq("id", res.user.id).single().execute()
+        if not profile.data or not profile.data.get("role"):
+            raise HTTPException(status_code=404, detail="User profile or role not found.")
+
+        user_role = profile.data["role"]
+
+        return LoginResponse(access_token=res.session.access_token, user_id=res.user.id, role=user_role)
+    except Exception as exc:
+        raise HTTPException(status_code=401, detail=str(exc))
 
 
-@router.post("/register")
-def register(payload: RegisterRequest):
-	sb = get_supabase()
-	try:
-		res = sb.auth.sign_up({"email": payload.email, "password": payload.password})
-		# Store role in a public profile table later; for now, return basic info
-		return {"user_id": res.user.id if res.user else None, "email": payload.email, "role": payload.role}
-	except Exception as exc:  # noqa: BLE001
-		raise HTTPException(status_code=400, detail=str(exc))
+@router.post("/register", status_code=status.HTTP_201_CREATED)
+def signup(payload: RegisterRequest, sb: Client = Depends(get_supabase)):
+    try:
+        # The trigger will automatically create the profile
+        res = sb.auth.sign_up(
+            {
+                "email": payload.email,
+                "password": payload.password,
+                "options": {"data": {"role": payload.role}},
+            }
+        )
+        if res.user is None:
+            raise HTTPException(status_code=400, detail="Failed to register user")
 
-
+        return {"message": "User registered successfully. Please check your email to verify."}
+    except Exception as exc:
+        print(f"Error during signup: {exc}")
+        raise HTTPException(status_code=400, detail=f"Database error saving new user: {exc}")

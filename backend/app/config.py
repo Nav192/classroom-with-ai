@@ -1,10 +1,13 @@
 from pathlib import Path
 from pydantic_settings import BaseSettings, SettingsConfigDict
+import os
 
 
 class Settings(BaseSettings):
 	# Supabase
-	supabase_url: str | None = None
+	SUPABASE_URL: str = os.getenv("SUPABASE_URL")
+	SUPABASE_ANON_KEY: str = os.getenv("SUPABASE_ANON_KEY")
+	SUPABASE_JWT_SECRET: str = os.getenv("SUPABASE_JWT_SECRET")
 	supabase_anon_key: str | None = None
 
 	# AI / Gemini
@@ -21,9 +24,8 @@ class Settings(BaseSettings):
 			".env",
 		),
 		env_file_encoding="utf-8",
+		extra="ignore", # Ignore extra fields from environment variables
 	)
 
 
 settings = Settings()  # type: ignore[call-arg]
-
-
