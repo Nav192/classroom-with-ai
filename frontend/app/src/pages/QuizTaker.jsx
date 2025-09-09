@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from "../services/api";
 
@@ -13,19 +13,61 @@ export default function QuizTaker() {
   const [startedAt, setStartedAt] = useState(null);
   const [endedAt, setEndedAt] = useState(null);
   const [submissionMessage, setSubmissionMessage] = useState('');
+  
+  // Cheating detection states
   const [blurred, setBlurred] = useState(false);
+  const [copyPasteDetected, setCopyPasteDetected] = useState(false);
+  const [cheatingEventsCount, setCheatingEventsCount] = useState(0);
 
+  // Function to send cheating event to backend
+  const sendCheatingEvent = useCallback(async (eventType, details = null, currentResultId = null) => {
+    try {
+      await api.post('/results/cheating-log', {
+        quiz_id: quizId,
+        event_type: eventType,
+        details: details,
+        result_id: currentResultId,
+      });
+      setCheatingEventsCount(prev => prev + 1);
+    } catch (err) {
+      console.error("Failed to log cheating event:", err);
+    }
+  }, [quizId]);
+
+  // Event listeners for cheating detection
   useEffect(() => {
-    const handleBlur = () => setBlurred(true);
+    const handleBlur = () => {
+      setBlurred(true);
+      sendCheatingEvent('tab_switch', 'User switched tabs/windows');
+    };
+    const handleFocus = () => setBlurred(false);
+    const handleCopy = (e) => {
+      setCopyPasteDetected(true);
+      sendCheatingEvent('copy_paste', 'User copied content');
+    };
+    const handlePaste = (e) => {
+      setCopyPasteDetected(true);
+      sendCheatingEvent('copy_paste', 'User pasted content');
+    };
+
     window.addEventListener('blur', handleBlur);
-    return () => window.removeEventListener('blur', handleBlur);
-  }, []);
+    window.addEventListener('focus', handleFocus);
+    window.addEventListener('copy', handleCopy);
+    window.addEventListener('paste', handlePaste);
+
+    return () => {
+      window.removeEventListener('blur', handleBlur);
+      window.removeEventListener('focus', handleFocus);
+      window.removeEventListener('copy', handleCopy);
+      window.removeEventListener('paste', handlePaste);
+    };
+  }, [sendCheatingEvent]);
 
   useEffect(() => {
     const fetchQuiz = async () => {
       try {
         setLoading(true);
-        const response = await api.get(`/quizzes/${quizId}`);
+        const response = await api.get(`/quizzes/${quizId}/details`);
         setQuiz(response.data);
         setStartedAt(new Date());
         setTimeLeft(response.data.duration_minutes * 60);
@@ -54,13 +96,13 @@ export default function QuizTaker() {
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [timeLeft, endedAt]);
+  }, [timeLeft, endedAt, handleSubmit]);
 
   const handleAnswerChange = (questionId, value) => {
     setAnswers(prev => ({ ...prev, [questionId]: value }));
   };
 
-  const handleSubmit = async (isAutoSubmit = false) => {
+  const handleSubmit = useCallback(async (isAutoSubmit = false) => {
     if (endedAt) return;
 
     const now = new Date();
@@ -78,11 +120,16 @@ export default function QuizTaker() {
 
     try {
       const response = await api.post('/results/submit', payload);
-      setSubmissionMessage(`Quiz submitted successfully! Your score: ${response.data.score}/${response.data.total}. ${blurred ? '(Tab switch detected)' : ''}`);
+      const submittedResultId = response.data.id;
+      // Send any pending cheating logs with the result_id
+      if (cheatingEventsCount > 0) {
+        sendCheatingEvent('quiz_submission', `Quiz submitted with ${cheatingEventsCount} detected events.`, submittedResultId);
+      }
+      setSubmissionMessage(`Quiz submitted successfully! Your score: ${response.data.score}/${response.data.total}.`);
     } catch (err) {
       setSubmissionMessage(err.response?.data?.detail || 'Failed to submit quiz.');
     } 
-  };
+  }, [endedAt, quiz, answers, startedAt, cheatingEventsCount, sendCheatingEvent]);
 
   if (loading) return <div className="p-6">Loading quiz...</div>;
   if (error) return <div className="p-6 text-destructive">{error}</div>;
@@ -103,7 +150,7 @@ export default function QuizTaker() {
 
         <div className="flex justify-between items-center mb-6 p-3 bg-primary/10 rounded-md border border-primary/20">
           <span className="text-lg font-semibold text-primary">Time Left: {formatTime(timeLeft)}</span>
-          {blurred && <span className="text-sm font-medium text-destructive">Tab Switch Detected!</span>}
+          {cheatingEventsCount > 0 && <span className="text-sm font-medium text-destructive">Suspicious activity detected! ({cheatingEventsCount} events)</span>}
         </div>
 
         {submissionMessage && (
@@ -148,7 +195,7 @@ export default function QuizTaker() {
                       disabled={!!endedAt}
                       className="form-radio text-primary focus:ring-primary"
                     />
-                    <span>True</span>
+                    <span>False</span>
                   </label>
                   <label className="inline-flex items-center gap-2 p-3 rounded-md hover:bg-muted/50 cursor-pointer">
                     <input
@@ -160,7 +207,7 @@ export default function QuizTaker() {
                       disabled={!!endedAt}
                       className="form-radio text-primary focus:ring-primary"
                     />
-                    <span>False</span>
+                    <span>True</span>
                   </label>
                 </div>
               )}
@@ -200,3 +247,4 @@ export default function QuizTaker() {
     </div>
   );
 }
+

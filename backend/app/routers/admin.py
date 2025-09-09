@@ -4,12 +4,12 @@ from typing import List
 from uuid import UUID
 from supabase import Client
 from gotrue.errors import AuthApiError
+import random
+import string
 
 from ..dependencies import get_supabase, get_current_admin_user
 
 router = APIRouter(
-    # prefix="/admin", # This is handled in the main router
-    tags=["admin"],
     dependencies=[Depends(get_current_admin_user)]
 )
 
@@ -30,74 +30,95 @@ class UserUpdate(BaseModel):
     email: EmailStr | None = None
     role: str | None = None
 
-# --- Endpoints ---
+class ClassAdminResponse(BaseModel):
+    id: UUID
+    class_name: str
+    class_code: str
+    created_at: str
+    created_by: UUID | None
+    class Config:
+        from_attributes = True
 
-@router.get("/users", response_model=List[UserResponse])
+# --- User Management Endpoints ---
+
+@router.get("/users", response_model=List[UserResponse], summary="List all users")
 def list_users(sb: Client = Depends(get_supabase)):
-    """Mengambil daftar semua pengguna."""
     try:
         response = sb.table("profiles").select("id, email, role").execute()
         return response.data or []
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.post("/users", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/users", response_model=UserResponse, status_code=status.HTTP_201_CREATED, summary="Create a new user")
 def create_user(user_data: UserCreate, sb: Client = Depends(get_supabase)):
-    """Membuat pengguna baru. Hanya Admin."""
     try:
         res = sb.auth.admin.create_user({
             "email": user_data.email,
             "password": user_data.password,
-            "email_confirm": True, # Langsung konfirmasi email
+            "email_confirm": True,
             "user_metadata": {"role": user_data.role}
         })
         new_user = res.user
         if not new_user:
-            raise HTTPException(status_code=400, detail="Gagal membuat pengguna di Supabase Auth.")
-
+            raise HTTPException(status_code=400, detail="Failed to create user in Supabase Auth.")
         profile_res = sb.table("profiles").select("*").eq("id", new_user.id).single().execute()
-        if not profile_res.data:
-            raise HTTPException(status_code=404, detail="Profil pengguna tidak dibuat di database.")
-
         return profile_res.data
     except AuthApiError as e:
         raise HTTPException(status_code=e.status, detail=e.message)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
 
-
-@router.put("/users/{user_id}", response_model=UserResponse)
+@router.put("/users/{user_id}", response_model=UserResponse, summary="Update a user's role or email")
 def update_user(user_id: UUID, user_data: UserUpdate, sb: Client = Depends(get_supabase)):
-    """Memperbarui peran atau email pengguna."""
     try:
         if user_data.role:
             sb.table("profiles").update({"role": user_data.role}).eq("id", user_id).execute()
-
         if user_data.email:
             sb.auth.admin.update_user_by_id(user_id, {"email": user_data.email})
-
         updated_profile = sb.table("profiles").select("*").eq("id", user_id).single().execute()
-        if not updated_profile.data:
-            raise HTTPException(status_code=404, detail="Tidak bisa mengambil profil pengguna yang telah diperbarui.")
-
         return updated_profile.data
     except AuthApiError as e:
         raise HTTPException(status_code=e.status, detail=e.message)
+
+@router.delete("/users/{user_id}", status_code=status.HTTP_204_NO_CONTENT, summary="Permanently delete a user")
+def delete_user(user_id: UUID, sb: Client = Depends(get_supabase)):
+    try:
+        sb.auth.admin.delete_user(user_id)
+    except AuthApiError as e:
+        if "User not found" in e.message:
+             raise HTTPException(status_code=404, detail="User not found.")
+        raise HTTPException(status_code=e.status, detail=e.message)
+
+# --- Class Management Endpoints ---
+
+@router.get("/classes", response_model=List[ClassAdminResponse], summary="List all classes")
+def list_all_classes(sb: Client = Depends(get_supabase)):
+    try:
+        response = sb.table("classes").select("*").order("created_at", desc=True).execute()
+        return response.data or []
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-
-@router.delete("/users/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_user(user_id: UUID, sb: Client = Depends(get_supabase)):
-    """
-    Menghapus pengguna secara permanen dari sistem. Aksi ini tidak bisa dibatalkan.
-    """
+@router.patch("/classes/{class_id}/reset-code", response_model=ClassAdminResponse, summary="Reset a class code")
+def reset_class_code(class_id: UUID, sb: Client = Depends(get_supabase)):
+    """Generates a new, unique 6-character alphanumeric code for a class."""
     try:
-        sb.auth.admin.delete_user(user_id)
-        return
-    except AuthApiError as e:
-        if "User not found" in e.message:
-             raise HTTPException(status_code=404, detail="Pengguna tidak ditemukan.")
-        raise HTTPException(status_code=e.status, detail=e.message)
+        while True:
+            new_code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
+            # Check if code already exists
+            check = sb.table("classes").select("id").eq("class_code", new_code).execute()
+            if not check.data:
+                break
+        
+        response = sb.table("classes").update({"class_code": new_code}).eq("id", str(class_id)).select("*").single().execute()
+        if not response.data:
+            raise HTTPException(status_code=404, detail="Class not found.")
+        return response.data
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.delete("/classes/{class_id}", status_code=status.HTTP_204_NO_CONTENT, summary="Delete a class")
+def delete_class(class_id: UUID, sb: Client = Depends(get_supabase)):
+    """Permanently deletes a class and all its associated data (members, materials, quizzes, etc.) via cascading deletes."""
+    try:
+        sb.table("classes").delete().eq("id", str(class_id)).execute()
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

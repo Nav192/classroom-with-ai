@@ -3,7 +3,7 @@ from pydantic import BaseModel
 from typing import List, Optional
 from uuid import UUID
 
-from ..dependencies import get_supabase, get_current_user, get_current_teacher_user
+from ..dependencies import get_supabase, get_current_user, get_current_teacher_user, verify_class_membership
 from supabase import Client
 
 router = APIRouter()
@@ -11,14 +11,13 @@ router = APIRouter()
 # --- Pydantic Models ---
 class QuestionIn(BaseModel):
     text: str
-    type: str
+    type: str # 'mcq', 'true_false', 'essay'
     options: Optional[List[str]] = None
     answer: Optional[str] = None
 
 class QuizIn(BaseModel):
-    class_id: str
     topic: str
-    type: str
+    type: str # 'mcq', 'true_false', 'essay'
     duration_minutes: int
     questions: List[QuestionIn]
 
@@ -30,27 +29,29 @@ class QuizOut(BaseModel):
     id: UUID
     topic: str
     type: str
+    class_id: UUID
     class Config: { "from_attributes": True }
 
 class QuizWithQuestions(QuizOut):
     questions: List[QuestionOut]
 
 # --- Endpoints ---
-@router.post("", status_code=status.HTTP_201_CREATED, response_model=QuizOut)
+@router.post("/{class_id}", status_code=status.HTTP_201_CREATED, response_model=QuizOut, dependencies=[Depends(verify_class_membership)])
 def create_quiz(
+    class_id: UUID,
     payload: QuizIn,
     sb: Client = Depends(get_supabase),
     current_teacher: dict = Depends(get_current_teacher_user),
 ):
-    """Membuat kuis baru beserta pertanyaannya. Hanya untuk Guru."""
+    """Creates a new quiz with questions for a specific class. Teacher must be a member."""
     teacher_id = current_teacher.get("id")
 
     if any(q.type != payload.type for q in payload.questions):
-        raise HTTPException(status_code=400, detail="Semua tipe pertanyaan harus sama dengan tipe kuis.")
+        raise HTTPException(status_code=400, detail="All question types must match the quiz type.")
 
     try:
         quiz_res = sb.table("quizzes").insert({
-            "class_id": payload.class_id,
+            "class_id": str(class_id),
             "topic": payload.topic,
             "type": payload.type,
             "duration_minutes": payload.duration_minutes,
@@ -58,7 +59,7 @@ def create_quiz(
         }).execute()
         
         if not quiz_res.data:
-            raise HTTPException(status_code=500, detail="Gagal membuat kuis.")
+            raise HTTPException(status_code=500, detail="Failed to create quiz.")
         
         new_quiz = quiz_res.data[0]
         questions_to_insert = [
@@ -69,36 +70,39 @@ def create_quiz(
 
         if not questions_res.data:
             sb.table("quizzes").delete().eq("id", new_quiz['id']).execute()
-            raise HTTPException(status_code=500, detail="Gagal membuat pertanyaan untuk kuis.")
+            raise HTTPException(status_code=500, detail="Failed to create questions for the quiz.")
 
         return new_quiz
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Terjadi kesalahan: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"An error occurred: {str(e)}")
 
-@router.get("", response_model=List[QuizOut])
+@router.get("/{class_id}", response_model=List[QuizOut], dependencies=[Depends(verify_class_membership)])
 def list_quizzes(
-    class_id: str | None = None,
+    class_id: UUID,
     sb: Client = Depends(get_supabase),
-    current_user: dict = Depends(get_current_user),
 ):
-    """Menampilkan daftar kuis yang tersedia. Untuk semua pengguna yang login."""
-    query = sb.table("quizzes").select("id, topic, type, class_id")
-    if class_id:
-        query = query.eq("class_id", class_id)
-    
+    """Lists available quizzes for a specific class. User must be a member."""
+    query = sb.table("quizzes").select("id, topic, type, class_id").eq("class_id", str(class_id))
     return query.order("created_at", desc=True).execute().data or []
 
-@router.get("/{quiz_id}", response_model=QuizWithQuestions)
-def get_quiz(
+@router.get("/{quiz_id}/details", response_model=QuizWithQuestions)
+def get_quiz_details(
     quiz_id: UUID,
     sb: Client = Depends(get_supabase),
     current_user: dict = Depends(get_current_user),
 ):
-    """Mengambil detail kuis beserta semua pertanyaannya."""
-    quiz_res = sb.table("quizzes").select("*").eq("id", quiz_id).single().execute()
+    """Retrieves details for a specific quiz, including its questions."""
+    quiz_res = sb.table("quizzes").select("*").eq("id", str(quiz_id)).single().execute()
     if not quiz_res.data:
-        raise HTTPException(status_code=404, detail="Kuis tidak ditemukan")
+        raise HTTPException(status_code=404, detail="Quiz not found")
 
-    questions_res = sb.table("questions").select("*").eq("quiz_id", quiz_id).execute()
+    # Verify user is a member of the class this quiz belongs to
+    quiz_class_id = quiz_res.data['class_id']
+    user_id = current_user.get('id')
+    member_res = sb.table("class_members").select("id").eq("class_id", quiz_class_id).eq("user_id", user_id).single().execute()
+    if not member_res.data:
+        raise HTTPException(status_code=403, detail="You are not a member of the class this quiz belongs to.")
+
+    questions_res = sb.table("questions").select("*").eq("quiz_id", str(quiz_id)).execute()
     
     return {**quiz_res.data, "questions": questions_res.data or []}

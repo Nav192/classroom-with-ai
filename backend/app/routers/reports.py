@@ -1,91 +1,85 @@
 import io
 import pandas as pd
-from fastapi import APIRouter, HTTPException, Depends, status
+from fastapi import APIRouter, HTTPException, Depends
 from fastapi.responses import StreamingResponse
 from supabase.client import Client as SupabaseClient
-from typing import List, Dict
+from uuid import UUID
 
-from ..dependencies import get_supabase, get_current_teacher_user # Hanya guru yang bisa membuat laporan
+from ..dependencies import get_supabase, get_current_teacher_user, verify_class_membership
 
 router = APIRouter()
 
-@router.get("/students.csv", summary="Buat laporan belajar siswa komprehensif dalam format CSV")
-def generate_student_learning_report_csv(
+@router.get("/{class_id}/students.csv", summary="Generate a student learning report for a specific class in CSV format")
+def generate_class_learning_report_csv(
+    class_id: UUID,
     sb: SupabaseClient = Depends(get_supabase),
-    current_teacher: dict = Depends(get_current_teacher_user), # Amankan untuk guru saja
+    current_teacher: dict = Depends(get_current_teacher_user),
+    is_member: bool = Depends(verify_class_membership)
 ):
     """
-    Membuat laporan CSV komprehensif tentang progres belajar siswa,
-    termasuk penyelesaian materi dan hasil kuis.
+    Generates a comprehensive CSV report on student learning progress for a specific class.
+    Only accessible by teachers who are members of the class.
     """
     try:
-        # Ambil data yang diperlukan
-        profiles_res = sb.table("profiles").select("id, email, role").eq("role", "student").execute()
-        students = profiles_res.data or []
+        # 1. Get all students in the class
+        class_members = sb.table("class_members").select("user_id").eq("class_id", str(class_id)).execute().data or []
+        student_ids = [member['user_id'] for member in class_members]
+        if not student_ids:
+            raise HTTPException(status_code=404, detail="No students found in this class.")
 
-        materials_progress_res = sb.table("materials_progress").select("*").execute()
-        materials_progress = materials_progress_res.data or []
+        student_profiles = sb.table("profiles").select("id, email, role").in_("id", student_ids).eq("role", "student").execute().data or []
+        student_id_map = {p['id']: p['email'] for p in student_profiles}
 
-        results_res = sb.table("results").select("*").execute()
-        results = results_res.data or []
+        # 2. Get all materials and quizzes for the class
+        materials_in_class = sb.table("materials").select("id, topic").eq("class_id", str(class_id)).execute().data or []
+        material_ids_in_class = [m['id'] for m in materials_in_class]
 
-        quizzes_res = sb.table("quizzes").select("id, topic, class_id").execute()
-        quizzes = {q['id']: q for q in quizzes_res.data}
+        quizzes_in_class = sb.table("quizzes").select("id, topic").eq("class_id", str(class_id)).execute().data or []
+        quiz_id_map = {q['id']: q['topic'] for q in quizzes_in_class}
 
-        materials_res = sb.table("materials").select("id, topic, class_id").execute()
-        materials = {m['id']: m for m in materials_res.data}
+        # 3. Get all relevant progress and result data
+        materials_progress = sb.table("materials_progress").select("user_id, material_id, status").in_("user_id", list(student_id_map.keys())).in_("material_id", material_ids_in_class).execute().data or []
+        quiz_results = sb.table("results").select("user_id, quiz_id, score, total, created_at").in_("user_id", list(student_id_map.keys())).in_("quiz_id", list(quiz_id_map.keys())).execute().data or []
 
         report_data = []
-
-        for student in students:
-            student_id = student['id']
-            student_email = student['email']
-
-            # Agregasi progres materi untuk siswa ini
-            student_materials_progress = [mp for mp in materials_progress if mp['user_id'] == student_id]
-            completed_materials_count = len([mp for mp in student_materials_progress if mp['status'] == 'completed'])
+        for student_id, student_email in student_id_map.items():
+            # Aggregate material progress for this student
+            student_materials_completed = len([mp for mp in materials_progress if mp['user_id'] == student_id and mp['status'] == 'completed'])
             
-            # Agregasi hasil kuis untuk siswa ini
-            student_results = [r for r in results if r['user_id'] == student_id]
-            
-            # Dapatkan kuis unik yang diselesaikan oleh siswa ini
-            completed_quizzes_ids = set(r['quiz_id'] for r in student_results)
-            completed_quizzes_count = len(completed_quizzes_ids)
+            # Aggregate quiz results for this student
+            student_quiz_results = [r for r in quiz_results if r['user_id'] == student_id]
+            completed_quizzes_count = len(set(r['quiz_id'] for r in student_quiz_results))
 
-            # Siapkan baris untuk CSV
             row = {
                 "ID Siswa": student_id,
                 "Email Siswa": student_email,
-                "Materi Selesai": completed_materials_count,
-                "Total Materi Dilacak": len(student_materials_progress), # Hanya materi yang berinteraksi dengan mereka
-                "Kuis Selesai": completed_quizzes_count,
-                "Total Kuis Diambil": len(student_results), # Total percobaan
+                "Materi Selesai": student_materials_completed,
+                "Total Materi di Kelas": len(materials_in_class),
+                "Kuis Dikerjakan (unik)": completed_quizzes_count,
+                "Total Kuis di Kelas": len(quizzes_in_class),
             }
+
+            # Add latest score for each quiz taken
+            latest_scores = {}
+            for r in sorted(student_quiz_results, key=lambda x: x['created_at'], reverse=True):
+                quiz_topic = quiz_id_map.get(r['quiz_id'])
+                if quiz_topic and quiz_topic not in latest_scores:
+                    latest_scores[quiz_topic] = f"{r['score']}/{r['total']}"
             
-            # Tambahkan skor kuis terbaru untuk setiap kuis yang diambil
-            latest_quiz_scores = {}
-            for r in sorted(student_results, key=lambda x: x['created_at'], reverse=True):
-                quiz_info = quizzes.get(r['quiz_id'])
-                if quiz_info:
-                    quiz_name = f"{quiz_info['topic']} ({quiz_info['class_id']})"
-                    if quiz_name not in latest_quiz_scores: # Hanya simpan skor percobaan terbaru
-                        latest_quiz_scores[quiz_name] = f"{r['score']}/{r['total']}"
-            
-            row.update(latest_quiz_scores)
+            row.update(latest_scores)
             report_data.append(row)
 
-        # Buat DataFrame dan ekspor ke CSV
-        df = pd.DataFrame(report_data)
-        
-        # Isi nilai NaN dengan string kosong untuk CSV yang lebih bersih
-        df = df.fillna('')
+        if not report_data:
+            df = pd.DataFrame(columns=["ID Siswa", "Email Siswa", "Info"]).append([{"Info": "Tidak ada data progres siswa untuk dilaporkan di kelas ini."}])
+        else:
+            df = pd.DataFrame(report_data).fillna("")
 
         buf = io.StringIO()
         df.to_csv(buf, index=False)
-        buf.seek(0);
+        buf.seek(0)
 
         headers = {
-            "Content-Disposition": "attachment; filename=laporan_belajar_siswa.csv",
+            "Content-Disposition": f"attachment; filename=laporan_kelas_{class_id}.csv",
             "Content-Type": "text/csv",
         }
         return StreamingResponse(iter([buf.getvalue()]), headers=headers)

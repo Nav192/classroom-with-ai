@@ -3,6 +3,7 @@ from fastapi.security import OAuth2PasswordBearer
 from supabase import create_client, Client
 from .config import settings
 import jwt
+from uuid import UUID
 
 oAuth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
 
@@ -62,3 +63,29 @@ def get_current_student_user(current_user: dict = Depends(get_current_user)):
             detail="Hanya siswa yang dapat mengakses fitur ini."
         )
     return current_user
+
+def verify_class_membership(
+    class_id: UUID,
+    user: dict = Depends(get_current_user),
+    db: Client = Depends(get_supabase)
+):
+    """
+    Dependency to verify that the current user is a member of the specified class.
+    """
+    user_id = user.get("id")
+    
+    try:
+        member = db.table("class_members").select("id").eq("class_id", str(class_id)).eq("user_id", user_id).single().execute()
+        
+        if not member.data:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You are not a member of this class or the class does not exist."
+            )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error verifying class membership: {str(e)}"
+        )
+    
+    return True

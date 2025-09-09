@@ -1,12 +1,26 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Plus, Trash2, Sparkles } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { Plus, Trash2, Sparkles, Info } from 'lucide-react';
 import api from '../services/api';
 
 export default function QuizBuilder() {
   const navigate = useNavigate();
-  const [topic, setTopic] = useState('');
+  const location = useLocation();
+
+  // Get classId from URL search params
   const [classId, setClassId] = useState('');
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const id = params.get('classId');
+    if (id) {
+      setClassId(id);
+    } else {
+      // Redirect if no classId is provided, as it's essential
+      navigate('/teacher/dashboard');
+    }
+  }, [location, navigate]);
+
+  const [topic, setTopic] = useState('');
   const [duration, setDuration] = useState(30);
   const [quizType, setQuizType] = useState('mcq');
   const [questions, setQuestions] = useState([{ text: '', options: ['', ''], answer: '' }]);
@@ -78,7 +92,6 @@ export default function QuizBuilder() {
     setMessage('');
 
     const payload = {
-      class_id: classId,
       topic,
       type: quizType,
       duration_minutes: parseInt(duration, 10),
@@ -86,7 +99,7 @@ export default function QuizBuilder() {
     };
 
     try {
-      await api.post('/quizzes', payload);
+      await api.post(`/quizzes/${classId}`, payload);
       setMessage('Quiz created successfully! Redirecting to dashboard...');
       setTimeout(() => navigate('/teacher/dashboard'), 2000);
     } catch (err) {
@@ -97,16 +110,15 @@ export default function QuizBuilder() {
   };
 
   const handleGenerateAIQuiz = async () => {
-    if (!topic || !classId) {
-      setAiError('Please fill in Topic and Class ID first.');
+    if (!topic) {
+      setAiError('Please fill in the Quiz Topic first.');
       return;
     }
     setAiGenerating(true);
     setAiError('');
     try {
-      const response = await api.post('/ai/generate-quiz', {
+      const response = await api.post(`/ai/generate-quiz/${classId}`, {
         topic,
-        class_id: classId,
         question_type: quizType,
         num_questions: aiNumQuestions,
       });
@@ -139,9 +151,9 @@ export default function QuizBuilder() {
                     <label htmlFor="topic" className="text-sm font-medium">Quiz Topic</label>
                     <input type="text" id="topic" value={topic} onChange={e => setTopic(e.target.value)} required className="w-full px-3 py-2 bg-input border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-primary"/>
                 </div>
-                <div className="space-y-2">
-                    <label htmlFor="classId" className="text-sm font-medium">Class ID</label>
-                    <input type="text" id="classId" value={classId} onChange={e => setClassId(e.target.value)} required className="w-full px-3 py-2 bg-input border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-primary"/>
+                <div className="space-y-2 bg-muted/50 p-3 rounded-md">
+                    <label className="text-sm font-medium flex items-center gap-2"><Info size={16}/> Class ID</label>
+                    <p className="font-mono text-sm text-muted-foreground">{classId || 'Loading...'}</p>
                 </div>
                 <div className="space-y-2">
                     <label htmlFor="duration" className="text-sm font-medium">Duration (minutes)</label>
@@ -160,7 +172,7 @@ export default function QuizBuilder() {
 
           <div className="bg-primary/10 p-4 rounded-lg border border-primary/20 space-y-3">
             <h3 className="text-lg font-semibold text-primary flex items-center gap-2"><Sparkles size={20}/> Generate with AI</h3>
-            <p className="text-sm text-primary/80">Use AI to generate quiz questions based on the uploaded materials for the Topic and Class ID above.</p>
+            <p className="text-sm text-primary/80">Use AI to generate quiz questions based on the uploaded materials for the Topic in the selected Class.</p>
             <div className="flex items-center gap-3">
               <label htmlFor="aiNumQuestions" className="text-sm font-medium">Number of Questions:</label>
               <input type="number" id="aiNumQuestions" value={aiNumQuestions} onChange={e => setAiNumQuestions(parseInt(e.target.value, 10))} min="1" max="20" className="w-20 px-3 py-2 bg-input border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-primary"/>
@@ -202,7 +214,7 @@ export default function QuizBuilder() {
 
           <div className="flex items-center justify-end gap-4 pt-6 border-t border-border">
             <button type="button" onClick={() => navigate('/teacher/dashboard')} className="text-muted-foreground hover:text-foreground">Cancel</button>
-            <button type="submit" disabled={loading} className="bg-primary text-primary-foreground px-6 py-2 rounded-md hover:bg-primary/90 disabled:opacity-50">
+            <button type="submit" disabled={loading || !classId} className="bg-primary text-primary-foreground px-6 py-2 rounded-md hover:bg-primary/90 disabled:opacity-50">
               {loading ? 'Saving...' : 'Save Quiz'}
             </button>
           </div>
