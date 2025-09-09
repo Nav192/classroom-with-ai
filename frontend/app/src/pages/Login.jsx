@@ -24,9 +24,9 @@ export default function Login() {
       const data = await res.json();
       localStorage.setItem("access_token", data.access_token);
       localStorage.setItem("user_id", data.user_id);
-      localStorage.setItem("user_role", data.role); // Store the role from the initial login response
+      localStorage.setItem("user_role", data.role);
 
-      navigate(`/${data.role}/dashboard`); // Redirect to role-specific dashboard
+      navigate(`/${data.role}/dashboard`);
     } catch (err) {
       setError(String(err));
     } finally {
@@ -35,39 +35,52 @@ export default function Login() {
   }
 
   return (
-    <div className="p-6 space-y-4 max-w-md mx-auto">
-      <h2 className="text-lg font-semibold">Login</h2>
-      <form onSubmit={onSubmit} className="space-y-3">
-        <input
-          type="email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          placeholder="Email"
-          className="w-full border rounded px-3 py-2"
-          required
-        />
-        <input
-          type="password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          placeholder="Password"
-          className="w-full border rounded px-3 py-2"
-          required
-        />
-        <button
-          disabled={loading}
-          className="bg-blue-600 text-white px-4 py-2 rounded w-full"
-        >
-          {loading ? "Logging In..." : "Login"}
-        </button>
-      </form>
-      {error && <div className="text-red-600 text-sm">{error}</div>}
-      <p className="text-sm text-gray-600">
-        Don't have an account?{" "}
-        <Link to="/signup" className="text-blue-600">
-          Sign Up
-        </Link>
-      </p>
+    <div className="flex items-center justify-center min-h-screen bg-background">
+      <div className="w-full max-w-md p-8 space-y-6 bg-card text-card-foreground rounded-lg shadow-lg">
+        <div className="text-center">
+          <h1 className="text-3xl font-bold">Login</h1>
+          <p className="text-muted-foreground">Enter your credentials to access your account</p>
+        </div>
+        <form onSubmit={onSubmit} className="space-y-4">
+          <div className="space-y-2">
+            <label htmlFor="email" className="text-sm font-medium">Email</label>
+            <input
+              id="email"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="you@example.com"
+              className="w-full px-3 py-2 bg-input border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+              required
+            />
+          </div>
+          <div className="space-y-2">
+            <label htmlFor="password" className="text-sm font-medium">Password</label>
+            <input
+              id="password"
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="••••••••"
+              className="w-full px-3 py-2 bg-input border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+              required
+            />
+          </div>
+          <button
+            disabled={loading}
+            className="w-full py-2 text-sm font-semibold text-primary-foreground bg-primary rounded-md hover:bg-primary/90 transition-colors disabled:opacity-50"
+          >
+            {loading ? "Logging In..." : "Login"}
+          </button>
+        </form>
+        {error && <p className="text-sm text-destructive">{error}</p>}
+        <p className="text-sm text-center text-muted-foreground">
+          Don't have an account?{" "}
+          <Link to="/signup" className="font-medium text-primary hover:underline">
+            Sign Up
+          </Link>
+        </p>
+      </div>
     </div>
   );
 }

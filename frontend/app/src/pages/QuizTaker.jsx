@@ -1,7 +1,6 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from "../services/api";
-import { formatDistanceToNowStrict } from 'date-fns'; // For timer display
 
 export default function QuizTaker() {
   const { quizId } = useParams();
@@ -14,9 +13,8 @@ export default function QuizTaker() {
   const [startedAt, setStartedAt] = useState(null);
   const [endedAt, setEndedAt] = useState(null);
   const [submissionMessage, setSubmissionMessage] = useState('');
-  const [blurred, setBlurred] = useState(false); // Anti-cheat flag
+  const [blurred, setBlurred] = useState(false);
 
-  // Anti-cheat: detect tab switch
   useEffect(() => {
     const handleBlur = () => setBlurred(true);
     window.addEventListener('blur', handleBlur);
@@ -29,11 +27,10 @@ export default function QuizTaker() {
         setLoading(true);
         const response = await api.get(`/quizzes/${quizId}`);
         setQuiz(response.data);
-        setStartedAt(new Date()); // Record start time
-        setTimeLeft(response.data.duration_minutes * 60); // Convert minutes to seconds
+        setStartedAt(new Date());
+        setTimeLeft(response.data.duration_minutes * 60);
       } catch (err) {
-        setError(err.response?.data?.detail || 'Gagal memuat kuis.');
-        console.error(err);
+        setError(err.response?.data?.detail || 'Failed to load quiz.');
       } finally {
         setLoading(false);
       }
@@ -42,7 +39,6 @@ export default function QuizTaker() {
     fetchQuiz();
   }, [quizId]);
 
-  // Countdown timer
   useEffect(() => {
     if (timeLeft <= 0 || endedAt) return;
 
@@ -50,7 +46,7 @@ export default function QuizTaker() {
       setTimeLeft(prevTime => {
         if (prevTime <= 1) {
           clearInterval(timer);
-          handleSubmit(true); // Auto-submit when time runs out
+          handleSubmit(true);
           return 0;
         }
         return prevTime - 1;
@@ -65,10 +61,10 @@ export default function QuizTaker() {
   };
 
   const handleSubmit = async (isAutoSubmit = false) => {
-    if (endedAt) return; // Prevent multiple submissions
+    if (endedAt) return;
 
     const now = new Date();
-    setEndedAt(now); // Record end time
+    setEndedAt(now);
 
     const payload = {
       quiz_id: quiz.id,
@@ -82,18 +78,15 @@ export default function QuizTaker() {
 
     try {
       const response = await api.post('/results/submit', payload);
-      setSubmissionMessage(`Kuis berhasil disubmit! Skor Anda: ${response.data.score}/${response.data.total}. ${blurred ? '(Deteksi perpindahan tab)' : ''}`);
+      setSubmissionMessage(`Quiz submitted successfully! Your score: ${response.data.score}/${response.data.total}. ${blurred ? '(Tab switch detected)' : ''}`);
     } catch (err) {
-      setSubmissionMessage(err.response?.data?.detail || 'Gagal submit kuis.');
-      console.error(err);
-    } finally {
-      // No need to set loading to false here, as the quiz is ended
-    }
+      setSubmissionMessage(err.response?.data?.detail || 'Failed to submit quiz.');
+    } 
   };
 
-  if (loading) return <div className="p-6">Memuat kuis...</div>;
-  if (error) return <div className="p-6 text-red-600">{error}</div>;
-  if (!quiz) return <div className="p-6">Kuis tidak ditemukan.</div>;
+  if (loading) return <div className="p-6">Loading quiz...</div>;
+  if (error) return <div className="p-6 text-destructive">{error}</div>;
+  if (!quiz) return <div className="p-6">Quiz not found.</div>;
 
   const formatTime = (seconds) => {
     const minutes = Math.floor(seconds / 60);
@@ -102,32 +95,32 @@ export default function QuizTaker() {
   };
 
   return (
-    <div className="p-8 bg-gray-50 min-h-screen">
-      <div className="max-w-3xl mx-auto bg-white p-8 rounded-lg shadow-md">
-        <h1 className="text-3xl font-bold text-gray-800 mb-4">{quiz.topic}</h1>
-        <p className="text-gray-600 mb-2">Kelas: {quiz.class_id} | Tipe: {quiz.type}</p>
-        <p className="text-gray-600 mb-4">Durasi: {quiz.duration_minutes} menit</p>
+    <div className="max-w-4xl mx-auto">
+      <div className="bg-card text-card-foreground p-8 rounded-lg shadow-md border border-border">
+        <h1 className="text-3xl font-bold mb-2">{quiz.topic}</h1>
+        <p className="text-muted-foreground mb-2">Class: {quiz.class_id} | Type: {quiz.type}</p>
+        <p className="text-muted-foreground mb-6">Duration: {quiz.duration_minutes} minutes</p>
 
-        <div className="flex justify-between items-center mb-6 p-3 bg-indigo-50 rounded-md">
-          <span className="text-lg font-semibold text-indigo-800">Waktu Tersisa: {formatTime(timeLeft)}</span>
-          {blurred && <span className="text-red-600 font-medium">Deteksi Perpindahan Tab!</span>}
+        <div className="flex justify-between items-center mb-6 p-3 bg-primary/10 rounded-md border border-primary/20">
+          <span className="text-lg font-semibold text-primary">Time Left: {formatTime(timeLeft)}</span>
+          {blurred && <span className="text-sm font-medium text-destructive">Tab Switch Detected!</span>}
         </div>
 
         {submissionMessage && (
-          <div className={`p-4 mb-4 rounded-md ${submissionMessage.includes('berhasil') ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+          <div className={`p-4 mb-4 rounded-md ${submissionMessage.includes('successfully') ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
             {submissionMessage}
           </div>
         )}
 
         <form onSubmit={(e) => { e.preventDefault(); handleSubmit(); }} className="space-y-6">
           {quiz.questions.map((q, index) => (
-            <div key={q.id} className="border p-4 rounded-lg shadow-sm">
-              <p className="font-medium text-gray-800 mb-3">{index + 1}. {q.text}</p>
+            <div key={q.id} className="border border-border p-4 rounded-lg">
+              <p className="font-medium mb-3">{index + 1}. {q.text}</p>
               
               {quiz.type === 'mcq' && (
                 <div className="space-y-2">
                   {q.options.map((option, optIndex) => (
-                    <label key={optIndex} className="flex items-center gap-2 text-gray-700">
+                    <label key={optIndex} className="flex items-center gap-3 p-3 rounded-md hover:bg-muted/50 cursor-pointer">
                       <input
                         type="radio"
                         name={`question-${q.id}`}
@@ -135,7 +128,7 @@ export default function QuizTaker() {
                         onChange={() => handleAnswerChange(q.id, option)}
                         checked={answers[q.id] === option}
                         disabled={!!endedAt}
-                        className="form-radio text-indigo-600"
+                        className="form-radio text-primary focus:ring-primary"
                       />
                       <span>{option}</span>
                     </label>
@@ -145,7 +138,7 @@ export default function QuizTaker() {
 
               {quiz.type === 'true_false' && (
                 <div className="space-x-4">
-                  <label className="inline-flex items-center gap-2 text-gray-700">
+                  <label className="inline-flex items-center gap-2 p-3 rounded-md hover:bg-muted/50 cursor-pointer">
                     <input
                       type="radio"
                       name={`question-${q.id}`}
@@ -153,11 +146,11 @@ export default function QuizTaker() {
                       onChange={() => handleAnswerChange(q.id, "True")}
                       checked={answers[q.id] === "True"}
                       disabled={!!endedAt}
-                      className="form-radio text-indigo-600"
+                      className="form-radio text-primary focus:ring-primary"
                     />
-                    <span>Benar</span>
+                    <span>True</span>
                   </label>
-                  <label className="inline-flex items-center gap-2 text-gray-700">
+                  <label className="inline-flex items-center gap-2 p-3 rounded-md hover:bg-muted/50 cursor-pointer">
                     <input
                       type="radio"
                       name={`question-${q.id}`}
@@ -165,9 +158,9 @@ export default function QuizTaker() {
                       onChange={() => handleAnswerChange(q.id, "False")}
                       checked={answers[q.id] === "False"}
                       disabled={!!endedAt}
-                      className="form-radio text-indigo-600"
+                      className="form-radio text-primary focus:ring-primary"
                     />
-                    <span>Salah</span>
+                    <span>False</span>
                   </label>
                 </div>
               )}
@@ -176,30 +169,30 @@ export default function QuizTaker() {
                 <textarea
                   value={answers[q.id] || ''}
                   onChange={(e) => handleAnswerChange(q.id, e.target.value)}
-                  placeholder="Tulis jawaban Anda di sini..."
+                  placeholder="Type your answer here..."
                   rows="4"
                   disabled={!!endedAt}
-                  className="w-full p-2 border rounded-md focus:ring-indigo-500 focus:border-indigo-500"
+                  className="w-full p-2 bg-input border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
                 ></textarea>
               )}
             </div>
           ))}
 
-          <div className="flex justify-end gap-4">
+          <div className="flex justify-end gap-4 pt-6 border-t border-border">
             <button
               type="button"
               onClick={() => navigate('/student/dashboard')}
-              className="bg-gray-300 text-gray-800 px-6 py-2 rounded-md hover:bg-gray-400 transition"
+              className="bg-muted text-muted-foreground px-6 py-2 rounded-md hover:bg-muted/80 transition-colors"
               disabled={!!endedAt}
             >
-              Batal
+              Cancel
             </button>
             <button
               type="submit"
-              className="bg-indigo-600 text-white px-6 py-2 rounded-md hover:bg-indigo-700 transition disabled:bg-indigo-300"
+              className="bg-primary text-primary-foreground px-6 py-2 rounded-md hover:bg-primary/90 transition-colors disabled:opacity-50"
               disabled={!!endedAt}
             >
-              Submit Kuis
+              Submit Quiz
             </button>
           </div>
         </form>

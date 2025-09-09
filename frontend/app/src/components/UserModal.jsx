@@ -32,7 +32,6 @@ export default function UserModal({ isOpen, onClose, onSubmit, user }) {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    // For edit mode, don't submit empty password
     const dataToSubmit = { ...formData };
     if (isEditMode && !dataToSubmit.password) {
       delete dataToSubmit.password;
@@ -45,13 +44,13 @@ export default function UserModal({ isOpen, onClose, onSubmit, user }) {
   }
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50">
-      <div className="bg-white p-6 rounded-lg shadow-xl w-full max-w-md">
-        <h2 className="text-xl font-semibold mb-4">{isEditMode ? 'Edit Pengguna' : 'Tambah Pengguna Baru'}</h2>
+    <div className="fixed inset-0 bg-black/60 flex justify-center items-center z-50">
+      <div className="bg-card text-card-foreground p-6 rounded-lg shadow-xl w-full max-w-md border border-border">
+        <h2 className="text-xl font-semibold mb-4">{isEditMode ? 'Edit User' : 'Add New User'}</h2>
         <form onSubmit={handleSubmit}>
           <div className="space-y-4">
-            <div>
-              <label htmlFor="email" className="block text-sm font-medium text-gray-700">Email</label>
+            <div className="space-y-2">
+              <label htmlFor="email" className="text-sm font-medium">Email</label>
               <input
                 type="email"
                 name="email"
@@ -59,12 +58,12 @@ export default function UserModal({ isOpen, onClose, onSubmit, user }) {
                 value={formData.email}
                 onChange={handleChange}
                 required
-                className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                className="w-full px-3 py-2 bg-input border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
               />
             </div>
             {!isEditMode && (
-              <div>
-                <label htmlFor="password" className="block text-sm font-medium text-gray-700">Password</label>
+              <div className="space-y-2">
+                <label htmlFor="password" className="text-sm font-medium">Password</label>
                 <input
                   type="password"
                   name="password"
@@ -72,18 +71,18 @@ export default function UserModal({ isOpen, onClose, onSubmit, user }) {
                   value={formData.password}
                   onChange={handleChange}
                   required
-                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                  className="w-full px-3 py-2 bg-input border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
                 />
               </div>
             )}
-            <div>
-              <label htmlFor="role" className="block text-sm font-medium text-gray-700">Peran</label>
+            <div className="space-y-2">
+              <label htmlFor="role" className="text-sm font-medium">Role</label>
               <select
                 name="role"
                 id="role"
                 value={formData.role}
                 onChange={handleChange}
-                className="mt-1 block w-full px-3 py-2 border border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                className="w-full px-3 py-2 bg-input border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
               >
                 <option value="student">Student</option>
                 <option value="teacher">Teacher</option>
@@ -95,15 +94,15 @@ export default function UserModal({ isOpen, onClose, onSubmit, user }) {
             <button
               type="button"
               onClick={onClose}
-              className="bg-gray-200 text-gray-700 px-4 py-2 rounded-md hover:bg-gray-300"
+              className="bg-muted text-muted-foreground px-4 py-2 rounded-md hover:bg-muted/80 transition-colors"
             >
-              Batal
+              Cancel
             </button>
             <button
               type="submit"
-              className="bg-indigo-600 text-white px-4 py-2 rounded-md hover:bg-indigo-700"
+              className="bg-primary text-primary-foreground px-4 py-2 rounded-md hover:bg-primary/90 transition-colors"
             >
-              {isEditMode ? 'Simpan Perubahan' : 'Buat Pengguna'}
+              {isEditMode ? 'Save Changes' : 'Create User'}
             </button>
           </div>
         </form>

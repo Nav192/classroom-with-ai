@@ -13,18 +13,6 @@ export default function AdminDashboard() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState(null);
 
-  useEffect(() => {
-    fetchUsers();
-  }, []);
-
-  const fetchUsers = async () => {
-    const storedUserRole = localStorage.getItem("user_role");
-    if (storedUserRole !== "admin") {
-      setLoading(false);
-      setError("You do not have permission to view this page.");
-      return;
-    }
-
   const fetchUsers = async () => {
     try {
       setLoading(true);
@@ -39,12 +27,14 @@ export default function AdminDashboard() {
     }
   };
 
-  const handleLogout = () => {
-    localStorage.removeItem("access_token");
-    localStorage.removeItem("user_id");
-    localStorage.removeItem("user_role");
-    navigate("/login");
-  };
+  useEffect(() => {
+    const storedUserRole = localStorage.getItem("user_role");
+    if (storedUserRole !== "admin") {
+      navigate("/login");
+      return;
+    }
+    fetchUsers();
+  }, [navigate]);
 
   const handleOpenModal = (user = null) => {
     setEditingUser(user);
@@ -60,7 +50,7 @@ export default function AdminDashboard() {
     if (window.confirm("Are you sure you want to delete this user permanently?")) {
       try {
         await api.delete(`/admin/users/${userId}`);
-        fetchUsers(); // Refresh list after delete
+        fetchUsers();
       } catch (err) {
         alert("Failed to delete user.");
         console.error(err);
@@ -71,13 +61,11 @@ export default function AdminDashboard() {
   const handleFormSubmit = async (formData) => {
     try {
       if (editingUser) {
-        // Update user
         await api.put(`/admin/users/${editingUser.id}`, formData);
       } else {
-        // Create user
         await api.post("/admin/users", formData);
       }
-      fetchUsers(); // Refresh list
+      fetchUsers();
       handleCloseModal();
     } catch (err) {
       alert(`Failed to ${editingUser ? 'update' : 'create'} user.`);
@@ -93,47 +81,41 @@ export default function AdminDashboard() {
         onSubmit={handleFormSubmit}
         user={editingUser}
       />
-      <div className="p-6 bg-gray-50 min-h-screen">
-        <header className="flex justify-between items-center mb-6">
-          <h1 className="text-2xl font-bold text-gray-800">Admin Dashboard</h1>
-          <button
-            onClick={handleLogout}
-            className="bg-red-600 text-white px-4 py-2 rounded-md hover:bg-red-700 transition"
-          >
-            Logout
-          </button>
+      <div className="space-y-6">
+        <header className="flex justify-between items-center">
+          <h1 className="text-3xl font-bold">Admin Dashboard</h1>
         </header>
 
-        <main className="bg-white p-6 rounded-lg shadow-md">
-          <div className="flex justify-between items-center mb-4">
-            <h2 className="text-xl font-semibold text-gray-700">User Management</h2>
+        <div className="bg-card text-card-foreground rounded-lg shadow-md border border-border">
+          <div className="p-6 flex justify-between items-center">
+            <h2 className="text-xl font-semibold">User Management</h2>
             <button
               onClick={() => handleOpenModal()}
-              className="bg-indigo-600 text-white px-4 py-2 rounded-md hover:bg-indigo-700 flex items-center gap-2 transition"
+              className="bg-primary text-primary-foreground px-4 py-2 rounded-md hover:bg-primary/90 flex items-center gap-2 transition-colors"
             >
               <Plus size={18} />
               Add User
             </button>
           </div>
           
-          {loading && <p>Loading users...</p>}
-          {error && <p className="text-red-500">{error}</p>}
+          {loading && <p className="p-6">Loading users...</p>}
+          {error && <p className="p-6 text-destructive">{error}</p>}
           
           {!loading && !error && (
             <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
+              <table className="min-w-full divide-y divide-border">
+                <thead className="bg-muted/50">
                   <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Email</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Role</th>
-                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Email</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Role</th>
+                    <th className="px-6 py-3 text-right text-xs font-medium text-muted-foreground uppercase tracking-wider">Actions</th>
                   </tr>
                 </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
+                <tbody className="bg-card divide-y divide-border">
                   {users.map((user) => (
                     <tr key={user.id}>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-800">{user.email}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-foreground">{user.email}</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-muted-foreground">
                         <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
                           user.role === 'admin' ? 'bg-red-100 text-red-800' :
                           user.role === 'teacher' ? 'bg-green-100 text-green-800' :
@@ -143,10 +125,10 @@ export default function AdminDashboard() {
                         </span>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                        <button onClick={() => handleOpenModal(user)} className="text-indigo-600 hover:text-indigo-900 mr-4">
+                        <button onClick={() => handleOpenModal(user)} className="text-primary hover:text-primary/80 mr-4">
                           <Edit size={18} />
                         </button>
-                        <button onClick={() => handleDeleteUser(user.id)} className="text-red-600 hover:text-red-900">
+                        <button onClick={() => handleDeleteUser(user.id)} className="text-destructive hover:text-destructive/80">
                           <Trash2 size={18} />
                         </button>
                       </td>
@@ -156,7 +138,7 @@ export default function AdminDashboard() {
               </table>
             </div>
           )}
-        </main>
+        </div>
       </div>
     </>
   );
