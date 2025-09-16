@@ -13,7 +13,7 @@ from typing import List
 from uuid import UUID
 from pydantic import BaseModel
 
-from ..dependencies import get_supabase, get_current_user, get_current_teacher_user, verify_class_membership
+from ..dependencies import get_supabase, get_supabase_admin, get_current_user, get_current_teacher_user, verify_class_membership
 
 router = APIRouter()
 
@@ -48,7 +48,7 @@ async def upload_material(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     topic: str = Form(...),
-    sb: Client = Depends(get_supabase),
+    sb_admin: Client = Depends(get_supabase_admin),
     current_teacher: dict = Depends(get_current_teacher_user),
 ):
     """Uploads a material file to a specific class. Teacher must be a member of the class."""
@@ -62,29 +62,73 @@ async def upload_material(
         file_content = await file.read()
         storage_path = f"{user_id}/{class_id}/{topic}/{file.filename}"
 
-        sb.storage.from_("materials").upload(
+        # 1. Upload file to Storage using admin client to bypass RLS
+        sb_admin.storage.from_("materials").upload(
             path=storage_path,
             file=file_content,
             file_options={"content-type": file.content_type, "upsert": "true"},
         )
 
-        db_response = sb.table("materials").upsert({
-            "class_id": str(class_id),
-            "topic": topic,
-            "filename": file.filename,
-            "mime_type": file.content_type,
-            "file_type": file_extension.replace('pptx', 'ppt'),
-            "storage_path": storage_path,
-            "user_id": str(user_id),
-        }, on_conflict="storage_path").execute()
+        # 2. Call the database function via RPC using admin client
+        params = {
+            "p_class_id": str(class_id),
+            "p_topic": topic,
+            "p_filename": file.filename,
+            "p_mime_type": file.content_type,
+            "p_file_type": file_extension.replace('pptx', 'ppt'),
+            "p_storage_path": storage_path,
+            "p_user_id": str(user_id),
+        }
+        db_response = sb_admin.rpc("handle_material_upload", params).execute()
 
         if not db_response.data:
-            raise HTTPException(status_code=500, detail="Failed to save material metadata to the database.")
+            # If the RPC call fails, we should consider removing the orphaned file from storage
+            sb_admin.storage.from_("materials").remove([storage_path])
+            raise HTTPException(status_code=500, detail="Failed to save material metadata via RPC.")
 
         material_record = db_response.data[0]
-        background_tasks.add_task(process_material_for_rag, material_record['id'], storage_path, sb)
+        material_id = material_record['material_id']
 
-        return {"message": "Material uploaded successfully. Embedding process will run in the background.", "material_id": material_record['id']}
+        return {"message": "Material uploaded successfully via RPC.", "material_id": material_id}
 
     except Exception as e:
+        # Force print the error to the terminal for debugging
+        print(f"CAUGHT EXCEPTION: {e}")
+        print(f"EXCEPTION TYPE: {type(e)}")
+        # This will catch the 'RAISE EXCEPTION' from our PostgreSQL function
         raise HTTPException(status_code=500, detail=f"An error occurred: {str(e)}")
+
+
+@router.get("/download/{material_id}", response_model=dict)
+async def download_material(
+    material_id: UUID,
+    sb_admin: Client = Depends(get_supabase_admin),
+    current_user: dict = Depends(get_current_user),
+):
+    """Generates a signed URL for downloading a material file."""
+    # 1. Fetch material details using admin client
+    material_res = sb_admin.table("materials").select("class_id, storage_path, user_id").eq("id", str(material_id)).single().execute()
+    if not material_res.data:
+        raise HTTPException(status_code=404, detail="Material not found.")
+
+    material = material_res.data
+    class_id = material.get("class_id")
+    storage_path = material.get("storage_path")
+    uploader_id = material.get("user_id")
+    user_id = current_user.get("id")
+
+    if not storage_path:
+        raise HTTPException(status_code=404, detail="File path not found for this material.")
+
+    # 2. Verify user is a member of the class OR the original uploader (using admin client)
+    if str(user_id) != str(uploader_id):
+        member_res = sb_admin.table("class_members").select("id").eq("class_id", str(class_id)).eq("user_id", str(user_id)).single().execute()
+        if not member_res.data:
+            raise HTTPException(status_code=403, detail="You are not authorized to download this material.")
+
+    # 3. Generate signed URL (valid for 60 seconds) using admin client
+    try:
+        signed_url_res = sb_admin.storage.from_("materials").create_signed_url(storage_path, 60)
+        return {"download_url": signed_url_res['signedURL']}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Could not generate download link: {str(e)}")

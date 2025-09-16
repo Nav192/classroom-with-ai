@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 
 export default function UserModal({ isOpen, onClose, onSubmit, user }) {
   const [formData, setFormData] = useState({
+    username: '',
     email: '',
     password: '',
     role: 'student',
@@ -12,12 +13,14 @@ export default function UserModal({ isOpen, onClose, onSubmit, user }) {
   useEffect(() => {
     if (isEditMode && user) {
       setFormData({
+        username: user.username || '',
         email: user.email || '',
         password: '',
         role: user.role || 'student',
       });
     } else {
       setFormData({
+        username: '',
         email: '',
         password: '',
         role: 'student',
@@ -49,6 +52,18 @@ export default function UserModal({ isOpen, onClose, onSubmit, user }) {
         <h2 className="text-xl font-semibold mb-4">{isEditMode ? 'Edit User' : 'Add New User'}</h2>
         <form onSubmit={handleSubmit}>
           <div className="space-y-4">
+            <div className="space-y-2">
+              <label htmlFor="username" className="text-sm font-medium">Username</label>
+              <input
+                type="text"
+                name="username"
+                id="username"
+                value={formData.username}
+                onChange={handleChange}
+                required
+                className="w-full px-3 py-2 bg-input border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+              />
+            </div>
             <div className="space-y-2">
               <label htmlFor="email" className="text-sm font-medium">Email</label>
               <input

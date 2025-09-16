@@ -6,6 +6,7 @@ import api from "../services/api";
 export default function TeacherDashboard() {
   const navigate = useNavigate();
   const [user, setUser] = useState(null);
+  const [username, setUsername] = useState("");
 
   // Class management state
   const [myClasses, setMyClasses] = useState([]);
@@ -37,6 +38,9 @@ export default function TeacherDashboard() {
     } else {
       setUser({ id: storedUserId, role: storedUserRole });
       fetchMyClasses();
+      api.get(`/users/${storedUserId}`).then(res => {
+        setUsername(res.data.username);
+      });
     }
   }, [navigate]);
 
@@ -149,7 +153,7 @@ export default function TeacherDashboard() {
 
   return (
     <div className="space-y-8">
-      <header><h1 className="text-3xl font-bold">Teacher Dashboard</h1></header>
+      <header><h1 className="text-3xl font-bold">Teacher Dashboard</h1><p className="text-muted-foreground">Welcome, {username}</p></header>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-card text-card-foreground p-6 rounded-lg shadow-md border border-border">
         <div>
@@ -220,7 +224,10 @@ export default function TeacherDashboard() {
           <div className="lg:col-span-3 bg-card text-card-foreground rounded-lg shadow-md border border-border">
             <div className="p-6 flex justify-between items-center">
               <h2 className="text-xl font-semibold">Student Progress</h2>
-              <button onClick={handleDownloadReport} className="bg-secondary text-secondary-foreground px-4 py-2 rounded-md hover:bg-secondary/80 flex items-center gap-2 transition-colors"><Download size={18} /> Download Report</button>
+              <div className="flex items-center gap-2">
+                <Link to={`/teacher/student-progress?classId=${selectedClassId}&className=${myClasses.find(c => c.id === selectedClassId)?.class_name}`} className="bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600 flex items-center gap-2 transition-colors"><Users size={18} /> View All Progress</Link>
+                <button onClick={handleDownloadReport} className="bg-secondary text-secondary-foreground px-4 py-2 rounded-md hover:bg-secondary/80 flex items-center gap-2 transition-colors"><Download size={18} /> Download Report</button>
+              </div>
             </div>
             <div className="px-6 pb-6">
               {classProgress && classProgress.student_summaries.length > 0 ? (

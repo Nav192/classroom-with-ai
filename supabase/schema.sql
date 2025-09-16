@@ -4,6 +4,7 @@ create extension if not exists vector;
 -- Users and roles
 create table if not exists public.profiles (
     id uuid primary key,
+    username text,
     email text unique,
     role text check (role in ('teacher','student','admin')) default 'student',
     created_at timestamp with time zone default now()
@@ -101,13 +102,13 @@ create or replace function public.create_user_profile()
 returns trigger
 language plpgsql
 security definer set search_path = public
-as $$
+as $
 begin
-  insert into public.profiles (id, email, role)
-  values (new.id, new.email, new.raw_user_meta_data->>'role');
+  insert into public.profiles (id, email, role, username)
+  values (new.id, new.email, new.raw_user_meta_data->>'role', new.raw_user_meta_data->>'username');
   return new;
 end;
-$$;
+$;
 
 -- Trigger to run the function after a new user is created
 create or replace trigger on_auth_user_created
@@ -127,7 +128,7 @@ returns table (
   similarity float
 )
 language sql stable
-as $$
+as $
   select
     material_embeddings.id,
     material_embeddings.material_id,
@@ -137,4 +138,25 @@ as $$
   where 1 - (material_embeddings.embedding <=> query_embedding) > match_threshold
   order by similarity desc
   limit match_count;
-$$;
+$;
+
+-- RLS Policies for Materials
+alter table public.materials enable row level security;
+
+create policy "Allow authenticated read access to materials"
+on public.materials for select
+to authenticated
+using (true);
+
+create policy "Allow teachers or admins to insert materials"
+on public.materials for insert
+to authenticated
+with check ((select role from public.profiles where id = auth.uid()) in ('teacher', 'admin'));
+
+create policy "Allow teachers to update their own materials"
+on public.materials for update
+using (auth.uid() = user_id);
+
+create policy "Allow teachers to delete their own materials"
+on public.materials for delete
+using (auth.uid() = user_id);

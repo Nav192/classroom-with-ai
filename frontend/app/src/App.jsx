@@ -19,6 +19,7 @@ import Materials from "./pages/Materials.jsx";
 import Quizzes from "./pages/Quizzes.jsx";
 import Progress from "./pages/Progress.jsx";
 import Chat from "./pages/Chat.jsx";
+import StudentProgress from "./pages/StudentProgress.jsx";
 
 export default function App() {
   return (
@@ -40,6 +41,7 @@ export default function App() {
               <Route element={<ProtectedRoute allowedRoles={["teacher"]} />}>
                 <Route path="/teacher/dashboard" element={<TeacherDashboard />} />
                 <Route path="/teacher/quiz/new" element={<QuizBuilder />} />
+                <Route path="/teacher/student-progress" element={<StudentProgress />} />
               </Route>
               <Route element={<ProtectedRoute allowedRoles={["admin"]} />}>
                 <Route path="/admin/dashboard" element={<AdminDashboard />} />

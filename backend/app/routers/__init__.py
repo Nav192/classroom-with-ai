@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter
 
-from . import auth, admin, materials, quizzes, results, reports, ai, progress, classes
+from . import auth, admin, materials, quizzes, results, reports, ai, progress, classes, users
 
 
 api_router = APIRouter()
@@ -15,5 +15,6 @@ api_router.include_router(results.router, prefix="/results", tags=["results"])
 api_router.include_router(reports.router, prefix="/reports", tags=["reports"])
 api_router.include_router(ai.router, prefix="/ai", tags=["ai"])
 api_router.include_router(progress.router, prefix="/progress", tags=["progress"])
+api_router.include_router(users.router, prefix="", tags=["users"])
 
 

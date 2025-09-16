@@ -4,6 +4,7 @@ import { useNavigate, Link } from "react-router-dom";
 const API = import.meta.env.VITE_API_BASE;
 
 export default function Signup() {
+  const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [role, setRole] = useState("student");
@@ -19,7 +20,7 @@ export default function Signup() {
       const res = await fetch(`${API}/auth/register`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password, role }),
+        body: JSON.stringify({ email, password, role, username }),
       });
       if (!res.ok) throw new Error(await res.text());
       
@@ -50,6 +51,18 @@ export default function Signup() {
           <p className="text-muted-foreground">Enter your details to get started</p>
         </div>
         <form onSubmit={onSubmit} className="space-y-4">
+          <div className="space-y-2">
+            <label htmlFor="username" className="text-sm font-medium">Username</label>
+            <input
+              id="username"
+              type="text"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              placeholder="your_username"
+              className="w-full px-3 py-2 bg-input border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+              required
+            />
+          </div>
           <div className="space-y-2">
             <label htmlFor="email" className="text-sm font-medium">Email</label>
             <input

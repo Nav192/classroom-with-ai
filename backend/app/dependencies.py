@@ -12,11 +12,14 @@ def get_supabase() -> Client:
     key: str = settings.supabase_anon_key
     return create_client(url, key)
 
+def get_supabase_admin() -> Client:
+    url: str = settings.SUPABASE_URL
+    key: str = settings.SUPABASE_SERVICE_KEY
+    return create_client(url, key)
+
 def get_current_user(token: str = Depends(oAuth2_scheme), sb: Client = Depends(get_supabase)):
     print(f"Received Token: {token}")
     try:
-        # For more security, you'd verify against the public key (JWKS)
-        # Supabase JWT secret is base64 encoded and needs to be decoded
         payload = jwt.decode(token, settings.SUPABASE_JWT_SECRET, algorithms=["HS256"], audience="authenticated")
         user_id = payload.get("sub")
         if user_id is None:
@@ -26,14 +29,12 @@ def get_current_user(token: str = Depends(oAuth2_scheme), sb: Client = Depends(g
                 headers={"WWW-Authenticate": "Bearer"},
             )
         
-        # Fetch user profile from your public.profiles table
         user = sb.table("profiles").select("*").eq("id", user_id).single().execute()
         if not user.data:
             raise HTTPException(status_code=404, detail="User not found")
             
         return user.data
     except jwt.PyJWTError as e:
-        print(f"JWT Decoding Error: {e}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid authentication credentials",
@@ -69,14 +70,9 @@ def verify_class_membership(
     user: dict = Depends(get_current_user),
     db: Client = Depends(get_supabase)
 ):
-    """
-    Dependency to verify that the current user is a member of the specified class.
-    """
     user_id = user.get("id")
-    
     try:
         member = db.table("class_members").select("id").eq("class_id", str(class_id)).eq("user_id", user_id).single().execute()
-        
         if not member.data:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
@@ -87,5 +83,4 @@ def verify_class_membership(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error verifying class membership: {str(e)}"
         )
-    
     return True

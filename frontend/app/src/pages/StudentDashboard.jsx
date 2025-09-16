@@ -1,11 +1,12 @@
 import { useEffect, useState, useRef } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import { BookCopy, Send, User, Bot, PlayCircle, LogIn, Users } from "lucide-react";
+import { BookCopy, Send, User, Bot, PlayCircle, LogIn, Users, Download } from "lucide-react";
 import api from "../services/api";
 
 export default function StudentDashboard() {
   const navigate = useNavigate();
   const [user, setUser] = useState(null);
+  const [username, setUsername] = useState("");
 
   // Class management state
   const [myClasses, setMyClasses] = useState([]);
@@ -39,6 +40,9 @@ export default function StudentDashboard() {
     } else {
       setUser({ id: storedUserId, role: storedUserRole });
       fetchMyClasses();
+      api.get(`/users/${storedUserId}`).then(res => {
+        setUsername(res.data.username);
+      });
     }
   }, [navigate]);
 
@@ -125,11 +129,25 @@ export default function StudentDashboard() {
     }
   };
 
+  const handleDownload = async (materialId) => {
+    setDataError("");
+    try {
+      const res = await api.get(`/materials/download/${materialId}`);
+      if (res.data && res.data.download_url) {
+        window.open(res.data.download_url, "_blank");
+      } else {
+        setDataError("Could not retrieve download link.");
+      }
+    } catch (err) {
+      setDataError(err.response?.data?.detail || "An error occurred while trying to download.");
+    }
+  };
+
   if (!user) return <div className="p-6">Loading...</div>;
 
   return (
     <div className="space-y-8">
-      <header><h1 className="text-3xl font-bold">Student Dashboard</h1></header>
+      <header><h1 className="text-3xl font-bold">Student Dashboard</h1><p className="text-muted-foreground">Welcome, {username}</p></header>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-card text-card-foreground p-6 rounded-lg shadow-md border border-border">
         <div>
@@ -150,6 +168,8 @@ export default function StudentDashboard() {
           )}
         </div>
       </div>
+
+      {dataError && <p className="text-sm text-destructive text-center py-2">{dataError}</p>}
 
       {selectedClassId ? (
         loadingData ? <p className="text-center py-10">Loading class data...</p> : (
@@ -201,7 +221,18 @@ export default function StudentDashboard() {
               <div className="px-6 pb-6">
                 <ul className="space-y-3 max-h-80 overflow-y-auto">
                   {materials.length > 0 ? materials.map(material => (
-                    <li key={material.id} className="p-3 rounded-lg bg-muted/50 flex items-center gap-3"><BookCopy className="text-primary flex-shrink-0" size={20} /><div><p className="font-semibold text-sm">{material.topic}</p><p className="text-xs text-muted-foreground">{material.filename}</p></div></li>
+                    <li key={material.id} className="p-3 rounded-lg bg-muted/50 flex justify-between items-center">
+                      <div className="flex items-center gap-3">
+                        <BookCopy className="text-primary flex-shrink-0" size={20} />
+                        <div>
+                          <p className="font-semibold text-sm">{material.topic}</p>
+                          <p className="text-xs text-muted-foreground">{material.filename}</p>
+                        </div>
+                      </div>
+                      <button onClick={() => handleDownload(material.id)} className="p-2 text-primary hover:text-primary/80 transition-colors">
+                        <Download size={18} />
+                      </button>
+                    </li>
                   )) : <p className="text-muted-foreground text-sm">No materials in this class.</p>}
                 </ul>
               </div>

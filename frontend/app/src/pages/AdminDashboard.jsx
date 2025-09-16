@@ -12,6 +12,7 @@ export default function AdminDashboard() {
   const [userError, setUserError] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState(null);
+  const [username, setUsername] = useState("");
 
   // Class state
   const [classes, setClasses] = useState([]);
@@ -50,12 +51,16 @@ export default function AdminDashboard() {
 
   useEffect(() => {
     const storedUserRole = localStorage.getItem("user_role");
+    const storedUserId = localStorage.getItem("user_id");
     if (storedUserRole !== "admin") {
       navigate("/login");
       return;
     }
     fetchUsers();
     fetchClasses();
+    api.get(`/users/${storedUserId}`).then(res => {
+      setUsername(res.data.username);
+    });
   }, [navigate]);
 
   const handleOpenModal = (user = null) => {
@@ -137,7 +142,7 @@ export default function AdminDashboard() {
     <>
       <UserModal isOpen={isModalOpen} onClose={handleCloseModal} onSubmit={handleUserFormSubmit} user={editingUser} />
       <div className="space-y-8">
-        <header><h1 className="text-3xl font-bold">Admin Dashboard</h1></header>
+        <header><h1 className="text-3xl font-bold">Admin Dashboard</h1><p className="text-muted-foreground">Welcome, {username}</p></header>
 
         {/* User Management Card */}
         <div className="bg-card text-card-foreground rounded-lg shadow-md border border-border">
@@ -152,6 +157,7 @@ export default function AdminDashboard() {
               <table className="min-w-full divide-y divide-border">
                 <thead className="bg-muted/50">
                   <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Username</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Email</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Role</th>
                     <th className="px-6 py-3 text-right text-xs font-medium text-muted-foreground uppercase tracking-wider">Actions</th>
@@ -160,6 +166,7 @@ export default function AdminDashboard() {
                 <tbody className="bg-card divide-y divide-border">
                   {users.map((user) => (
                     <tr key={user.id}>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-foreground">{user.username}</td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-foreground">{user.email}</td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-muted-foreground">
                         <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${

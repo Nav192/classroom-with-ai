@@ -12,3 +12,17 @@ CREATE POLICY "Allow authenticated reads from quiz-results"
 ON storage.objects FOR SELECT
 TO authenticated
 USING (bucket_id = 'quiz-results');
+
+-- Policies for materials bucket
+CREATE POLICY "Allow teacher and admin uploads to materials"
+ON storage.objects FOR INSERT
+TO authenticated
+WITH CHECK (
+  bucket_id = 'materials' AND
+  (auth.jwt() -> 'user_metadata' ->> 'role') IN ('admin', 'teacher')
+);
+
+CREATE POLICY "Allow authenticated reads from materials"
+ON storage.objects FOR SELECT
+TO authenticated
+USING (bucket_id = 'materials');
