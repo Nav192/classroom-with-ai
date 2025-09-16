@@ -40,7 +40,8 @@ create table if not exists public.materials_progress (
     user_id uuid references public.profiles(id) on delete cascade,
     material_id uuid references public.materials(id) on delete cascade,
     status text check (status in ('not_started','in_progress','completed')) default 'not_started',
-    updated_at timestamp with time zone default now()
+    updated_at timestamp with time zone default now(),
+    unique (user_id, material_id)
 );
 
 -- Quizzes

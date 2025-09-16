@@ -235,19 +235,25 @@ export default function TeacherDashboard() {
                   <table className="min-w-full divide-y divide-border">
                     <thead className="bg-muted/50">
                       <tr>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Student Username</th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Student Email</th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Materials Done</th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Quizzes Done</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Materials Progress</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Quizzes Progress</th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Overall Progress</th>
                       </tr>
                     </thead>
                     <tbody className="bg-card divide-y divide-border">
                       {classProgress.student_summaries.map((student) => (
                         <tr key={student.user_id}>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-foreground">{student.username}</td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-foreground">{student.email}</td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-muted-foreground">{student.materials_completed} / {classProgress.total_materials}</td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-muted-foreground">{student.quizzes_attempted} / {classProgress.total_quizzes}</td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-muted-foreground">{student.overall_progress}%</td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-muted-foreground">{student.materials_progress_percentage}%</td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-muted-foreground">{student.quizzes_progress_percentage}%</td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-muted-foreground">{student.overall_progress_percentage}%</td>
                         </tr>
                       ))}
                     </tbody>

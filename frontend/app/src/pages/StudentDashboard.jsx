@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import { BookCopy, Send, User, Bot, PlayCircle, LogIn, Users, Download } from "lucide-react";
+import { BookCopy, Send, User, Bot, PlayCircle, LogIn, Users, Download, Eye } from "lucide-react";
 import api from "../services/api";
 
 export default function StudentDashboard() {
@@ -143,6 +143,23 @@ export default function StudentDashboard() {
     }
   };
 
+  const handleViewMaterial = async (materialId) => {
+    setDataError("");
+    try {
+      const res = await api.get(`/materials/download/${materialId}`);
+      if (res.data && res.data.download_url) {
+        window.open(res.data.download_url, "_blank");
+        // Mark material as completed
+        await api.post(`/progress/material/${materialId}/complete`);
+        fetchClassData(selectedClassId); // Refresh progress
+      } else {
+        setDataError("Could not retrieve material link.");
+      }
+    } catch (err) {
+      setDataError(err.response?.data?.detail || "An error occurred while trying to view material.");
+    }
+  };
+
   if (!user) return <div className="p-6">Loading...</div>;
 
   return (
@@ -203,13 +220,13 @@ export default function StudentDashboard() {
                 <div className="space-y-6">
                   <div className="border rounded-lg p-4">
                     <h3 className="font-semibold mb-2">Materials Progress</h3>
-                    <div className="flex items-center gap-4"><div className="text-3xl font-bold text-primary">{progress.overall_progress}%</div><div className="text-sm text-muted-foreground">{progress.materials_completed} of {progress.total_materials} completed</div></div>
-                    <div className="w-full bg-muted rounded-full h-2.5 mt-4"><div className="bg-primary h-2.5 rounded-full" style={{ width: `${(progress.materials_completed/progress.total_materials)*100}%` }}></div></div>
+                    <div className="flex items-center gap-4"><div className="text-3xl font-bold text-primary">{progress.materials_progress_percentage}%</div><div className="text-sm text-muted-foreground">{progress.materials_completed} of {progress.total_materials} completed</div></div>
+                    <div className="w-full bg-muted rounded-full h-2.5 mt-4"><div className="bg-primary h-2.5 rounded-full" style={{ width: `${progress.materials_progress_percentage}%` }}></div></div>
                   </div>
                   <div className="border rounded-lg p-4">
                     <h3 className="font-semibold mb-2">Quizzes Progress</h3>
-                    <div className="flex items-center gap-4"><div className="text-3xl font-bold text-green-600">{progress.overall_progress}%</div><div className="text-sm text-muted-foreground">{progress.quizzes_attempted} of {progress.total_quizzes} completed</div></div>
-                    <div className="w-full bg-muted rounded-full h-2.5 mt-4"><div className="bg-green-600 h-2.5 rounded-full" style={{ width: `${(progress.quizzes_attempted/progress.total_quizzes)*100}%` }}></div></div>
+                    <div className="flex items-center gap-4"><div className="text-3xl font-bold text-green-600">{progress.quizzes_progress_percentage}%</div><div className="text-sm text-muted-foreground">{progress.quizzes_attempted} of {progress.total_quizzes} completed</div></div>
+                    <div className="w-full bg-muted rounded-full h-2.5 mt-4"><div className="bg-green-600 h-2.5 rounded-full" style={{ width: `${progress.quizzes_progress_percentage}%` }}></div></div>
                   </div>
                 </div>
               </div>
@@ -229,9 +246,14 @@ export default function StudentDashboard() {
                           <p className="text-xs text-muted-foreground">{material.filename}</p>
                         </div>
                       </div>
-                      <button onClick={() => handleDownload(material.id)} className="p-2 text-primary hover:text-primary/80 transition-colors">
-                        <Download size={18} />
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <button onClick={() => handleViewMaterial(material.id)} className="p-2 text-primary hover:text-primary/80 transition-colors">
+                          <Eye size={18} />
+                        </button>
+                        <button onClick={() => handleDownload(material.id)} className="p-2 text-primary hover:text-primary/80 transition-colors">
+                          <Download size={18} />
+                        </button>
+                      </div>
                     </li>
                   )) : <p className="text-muted-foreground text-sm">No materials in this class.</p>}
                 </ul>
