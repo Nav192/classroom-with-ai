@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import { UploadCloud, BookOpen, Plus, Download, LogIn, Users, Trash2 } from "lucide-react";
+import { UploadCloud, BookOpen, Plus, Download, LogIn, Users, Trash2, Pencil } from "lucide-react";
 import api from "../services/api";
 
 // Main Dashboard Component
@@ -481,6 +481,7 @@ function QuizzesTab({ classId }) {
                   <p className="font-semibold text-gray-800">{quiz.topic}</p>
                   <div className="flex items-center gap-2">
                     <button onClick={() => handleViewResults(quiz.id)} className="bg-blue-100 text-blue-700 px-3 py-1 rounded-md hover:bg-blue-200 text-sm font-medium">{viewingResultsOfQuizId === quiz.id ? 'Hide Results' : 'View Results'}</button>
+                    <Link to={`/teacher/quiz/edit/${quiz.id}`} className="p-2 text-gray-500 hover:text-blue-600 transition-colors" title="Edit Quiz"><Pencil size={18} /></Link>
                     <button onClick={() => handleDeleteQuiz(quiz.id)} className="p-2 text-gray-500 hover:text-red-600 transition-colors" title="Delete Quiz"><Trash2 size={18} /></button>
                   </div>
                 </div>

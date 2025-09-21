@@ -1,25 +1,15 @@
 import { useState, useEffect } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation, useParams } from 'react-router-dom';
 import { Plus, Trash2, Sparkles, Info } from 'lucide-react';
 import api from '../services/api';
 
 export default function QuizBuilder() {
   const navigate = useNavigate();
   const location = useLocation();
+  const { quizId } = useParams(); // Get quizId from URL params
+  const isEditing = !!quizId; // True if quizId exists, false otherwise
 
-  // Get classId from URL search params
   const [classId, setClassId] = useState('');
-  useEffect(() => {
-    const params = new URLSearchParams(location.search);
-    const id = params.get('classId');
-    if (id) {
-      setClassId(id);
-    } else {
-      // Redirect if no classId is provided, as it's essential
-      navigate('/teacher/dashboard');
-    }
-  }, [location, navigate]);
-
   const [topic, setTopic] = useState('');
   const [duration, setDuration] = useState(30);
   const [maxAttempts, setMaxAttempts] = useState(2);
@@ -33,6 +23,38 @@ export default function QuizBuilder() {
   const [aiNumQuestions, setAiNumQuestions] = useState(5);
   const [aiGenerating, setAiGenerating] = useState(false);
   const [aiError, setAiError] = useState('');
+
+  useEffect(() => {
+    if (isEditing) {
+      // Fetch existing quiz data
+      setLoading(true);
+      api.get(`/quizzes/${quizId}/details`)
+        .then(res => {
+          const quizData = res.data;
+          setTopic(quizData.topic);
+          setDuration(quizData.duration_minutes);
+          setMaxAttempts(quizData.max_attempts);
+          setQuizType(quizData.type);
+          // Ensure questions have an 'id' for updates
+          setQuestions(quizData.questions.map(q => ({ ...q, id: q.id || undefined })));
+          setClassId(quizData.class_id); // Set classId from fetched quiz
+        })
+        .catch(err => {
+          setError(err.response?.data?.detail || 'Failed to load quiz for editing.');
+          navigate('/teacher/dashboard'); // Redirect if quiz not found or error
+        })
+        .finally(() => setLoading(false));
+    } else {
+      // Get classId from URL search params for new quiz creation
+      const params = new URLSearchParams(location.search);
+      const id = params.get('classId');
+      if (id) {
+        setClassId(id);
+      } else {
+        navigate('/teacher/dashboard'); // Redirect if no classId is provided
+      }
+    }
+  }, [location, navigate, quizId, isEditing]);
 
   const handleQuestionChange = (index, field, value) => {
     const newQuestions = [...questions];
@@ -97,15 +119,26 @@ export default function QuizBuilder() {
       type: quizType,
       duration_minutes: parseInt(duration, 10),
       max_attempts: parseInt(maxAttempts, 10),
-      questions: questions.map(q => ({...q, type: quizType}))
+      questions: questions.map(q => ({
+        id: q.id || undefined, // Include ID for existing questions
+        text: q.text,
+        type: quizType,
+        options: q.options,
+        answer: q.answer
+      }))
     };
 
     try {
-      await api.post(`/quizzes/${classId}`, payload);
-      setMessage('Quiz created successfully! Redirecting to dashboard...');
+      if (isEditing) {
+        await api.put(`/quizzes/${quizId}`, payload);
+        setMessage('Quiz updated successfully! Redirecting to dashboard...');
+      } else {
+        await api.post(`/quizzes/${classId}`, payload);
+        setMessage('Quiz created successfully! Redirecting to dashboard...');
+      }
       setTimeout(() => navigate('/teacher/dashboard'), 2000);
     } catch (err) {
-      setError(err.response?.data?.detail || 'Failed to create quiz.');
+      setError(err.response?.data?.detail || (isEditing ? 'Failed to update quiz.' : 'Failed to create quiz.'));
     } finally {
       setLoading(false);
     }
@@ -144,7 +177,7 @@ export default function QuizBuilder() {
   return (
     <div className="space-y-8">
         <header>
-            <h1 className="text-3xl font-bold">Create New Quiz</h1>
+            <h1 className="text-3xl font-bold">{isEditing ? 'Edit Quiz' : 'Create New Quiz'}</h1>
         </header>
         <form onSubmit={handleSubmit} className="bg-card text-card-foreground p-8 rounded-lg shadow-md space-y-6 border border-border">
           <fieldset className="space-y-4 border-b border-border pb-6">
@@ -190,7 +223,7 @@ export default function QuizBuilder() {
           </div>
 
           {questions.map((q, qIndex) => (
-            <fieldset key={qIndex} className="border-l-4 border-primary pl-4 py-4 space-y-3">
+            <fieldset key={q.id || qIndex} className="border-l-4 border-primary pl-4 py-4 space-y-3">
               <div className="flex justify-between items-center">
                 <h3 className="text-lg font-medium">Question {qIndex + 1}</h3>
                 <button type="button" onClick={() => removeQuestion(qIndex)} className="text-destructive hover:text-destructive/80"><Trash2 size={18}/></button>
@@ -221,7 +254,7 @@ export default function QuizBuilder() {
           <div className="flex items-center justify-end gap-4 pt-6 border-t border-border">
             <button type="button" onClick={() => navigate('/teacher/dashboard')} className="text-muted-foreground hover:text-foreground">Cancel</button>
             <button type="submit" disabled={loading || !classId} className="bg-primary text-primary-foreground px-6 py-2 rounded-md hover:bg-primary/90 disabled:opacity-50">
-              {loading ? 'Saving...' : 'Save Quiz'}
+              {loading ? 'Saving...' : (isEditing ? 'Update Quiz' : 'Save Quiz')}
             </button>
           </div>
           {message && <p className="text-sm text-green-600 text-center">{message}</p>}

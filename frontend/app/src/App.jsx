@@ -39,6 +39,7 @@ export default function App() {
             <Route element={<ProtectedRoute allowedRoles={["teacher"]} />}>
               <Route path="/teacher/dashboard" element={<TeacherDashboard />} />
               <Route path="/teacher/quiz/new" element={<QuizBuilder />} />
+              <Route path="/teacher/quiz/edit/:quizId" element={<QuizBuilder />} />
               <Route
                 path="/teacher/student-progress"
                 element={<StudentProgress />}
