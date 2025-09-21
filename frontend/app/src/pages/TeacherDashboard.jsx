@@ -141,10 +141,11 @@ function DashboardHeader({ username, myClasses, selectedClass, setSelectedClass,
 
 // Tabs Component
 function ClassTabs({ selectedClass, onDataChange }) {
-  const [activeTab, setActiveTab] = useState("students");
+  const [activeTab, setActiveTab] = useState("statistics");
 
   const tabs = [
-    { id: "students", label: "Students & Progress" },
+    { id: "statistics", label: "Statistics" },
+    { id: "students", label: "Students" },
     { id: "materials", label: "Materials" },
     { id: "quizzes", label: "Quizzes" },
   ];
@@ -169,6 +170,7 @@ function ClassTabs({ selectedClass, onDataChange }) {
         </nav>
       </div>
       <div className="py-6">
+        {activeTab === "statistics" && <StatisticsTab classId={selectedClass.id} />}
         {activeTab === "students" && <StudentsTab classId={selectedClass.id} className={selectedClass.class_name} />}
         {activeTab === "materials" && <MaterialsTab classId={selectedClass.id} onDataChange={onDataChange} />}
         {activeTab === "quizzes" && <QuizzesTab classId={selectedClass.id} />}
@@ -177,8 +179,8 @@ function ClassTabs({ selectedClass, onDataChange }) {
   );
 }
 
-// Students Tab Component
-function StudentsTab({ classId, className }) {
+// Statistics Tab Component
+function StatisticsTab({ classId }) {
   const [progress, setProgress] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -186,8 +188,69 @@ function StudentsTab({ classId, className }) {
   useEffect(() => {
     setLoading(true);
     api.get(`/progress/class/${classId}`)
-      .then(res => setProgress(res.data))
-      .catch(() => setError("Failed to load student progress."))
+      .then(res => {
+        const data = res.data;
+        // Aggregate data for class-wide statistics
+        const totalStudents = data.student_summaries.length;
+        const materialsCompleted = data.student_summaries.reduce((acc, student) => acc + student.materials_completed, 0);
+        const quizzesAttempted = data.student_summaries.reduce((acc, student) => acc + student.quizzes_attempted, 0);
+        
+        const classProgress = {
+          total_materials: data.total_materials * totalStudents,
+          total_quizzes: data.total_quizzes * totalStudents,
+          materials_completed: materialsCompleted,
+          quizzes_attempted: quizzesAttempted,
+          materials_progress_percentage: totalStudents > 0 ? Math.round((materialsCompleted / (data.total_materials * totalStudents)) * 100) : 0,
+          quizzes_progress_percentage: totalStudents > 0 ? Math.round((quizzesAttempted / (data.total_quizzes * totalStudents)) * 100) : 0,
+        };
+        setProgress(classProgress);
+      })
+      .catch(() => setError("Failed to load class progress."))
+      .finally(() => setLoading(false));
+  }, [classId]);
+
+  if (loading) return <p>Loading statistics...</p>;
+  if (error) return <p className="text-red-500">{error}</p>;
+  if (!progress) return <p>No progress data available.</p>;
+
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div className="bg-white p-6 rounded-lg shadow-md border border-gray-200">
+        <h3 className="font-semibold text-lg mb-4">Materials Progress</h3>
+        <div className="flex items-center justify-between">
+          <span className="text-3xl font-bold text-blue-600">{progress.materials_progress_percentage}%</span>
+          <span className="text-sm text-gray-500">{progress.materials_completed} of {progress.total_materials} completed</span>
+        </div>
+        <div className="w-full bg-gray-200 rounded-full h-2.5 mt-4">
+          <div className="bg-blue-600 h-2.5 rounded-full" style={{ width: `${progress.materials_progress_percentage}%` }}></div>
+        </div>
+      </div>
+      <div className="bg-white p-6 rounded-lg shadow-md border border-gray-200">
+        <h3 className="font-semibold text-lg mb-4">Quizzes Progress</h3>
+        <div className="flex items-center justify-between">
+          <span className="text-3xl font-bold text-green-600">{progress.quizzes_progress_percentage}%</span>
+          <span className="text-sm text-gray-500">{progress.quizzes_attempted} of {progress.total_quizzes} completed</span>
+        </div>
+        <div className="w-full bg-gray-200 rounded-full h-2.5 mt-4">
+          <div className="bg-green-600 h-2.5 rounded-full" style={{ width: `${progress.quizzes_progress_percentage}%` }}></div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+// Students Tab Component
+function StudentsTab({ classId, className }) {
+  const [students, setStudents] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    setLoading(true);
+    api.get(`/classes/${classId}/students`)
+      .then(res => setStudents(res.data))
+      .catch(() => setError("Failed to load students."))
       .finally(() => setLoading(false));
   }, [classId]);
 
@@ -208,42 +271,38 @@ function StudentsTab({ classId, className }) {
       .catch(() => setError("Failed to download report."));
   };
 
-  if (loading) return <p>Loading student progress...</p>;
+  if (loading) return <p>Loading students...</p>;
   if (error) return <p className="text-red-500">{error}</p>;
 
   return (
     <div className="bg-white p-6 rounded-lg shadow-md border border-gray-200">
       <div className="flex justify-between items-center mb-4">
-        <h2 className="text-xl font-semibold">Student Progress</h2>
+        <h2 className="text-xl font-semibold">Students</h2>
         <div className="flex items-center gap-2">
           <Link to={`/teacher/student-progress?classId=${classId}&className=${className}`} className="bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600 flex items-center gap-2 transition-colors text-sm"><Users size={16} /> View Details</Link>
           <button onClick={handleDownloadReport} className="bg-gray-600 text-white px-4 py-2 rounded-md hover:bg-gray-700 flex items-center gap-2 transition-colors text-sm"><Download size={16} /> Download Report</button>
         </div>
       </div>
-      {progress && progress.student_summaries.length > 0 ? (
+      {students.length > 0 ? (
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Student</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Materials</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Quizzes</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Overall Progress</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Email</th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {progress.student_summaries.map((student) => (
-                <tr key={student.user_id}>
+              {students.map((student) => (
+                <tr key={student.id}>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{student.username}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{student.materials_completed} / {progress.total_materials} ({student.materials_progress_percentage}%)</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{student.quizzes_attempted} / {progress.total_quizzes} ({student.quizzes_progress_percentage}%)</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{student.overall_progress_percentage}%</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{student.email}</td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
-      ) : <p className="text-gray-500 text-center py-10">No student progress to show yet.</p>}
+      ) : <p className="text-gray-500 text-center py-10">No students in this class yet.</p>}
     </div>
   );
 }

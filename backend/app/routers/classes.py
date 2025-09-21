@@ -22,6 +22,13 @@ class ClassResponse(BaseModel):
     class Config:
         from_attributes = True
 
+class StudentResponse(BaseModel):
+    id: UUID
+    username: str | None
+    email: str
+    role: str
+    class_name: str
+
 @router.post("", status_code=status.HTTP_201_CREATED, response_model=ClassResponse, summary="Create a new class (Admin only)")
 def create_class(
     class_data: ClassCreate,
@@ -98,3 +105,59 @@ def get_my_classes(
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+import traceback
+
+@router.get("/{class_id}/students", response_model=List[StudentResponse], summary="Get all students in a class")
+def get_students_in_class(
+    class_id: UUID,
+    user: dict = Depends(get_current_user),
+    db: supabase.client.Client = Depends(get_supabase)
+):
+    """Fetches all students enrolled in a specific class."""
+    try:
+        # Check for authorization
+        is_member = db.table("class_members").select("id").eq("class_id", class_id).eq("user_id", user.get("id")).execute()
+        is_admin = user.get("role") == "admin"
+
+        if not is_member.data and not is_admin:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You are not authorized to view students in this class")
+
+        # Get all user_ids from the class_members table for the given class_id
+        # and join with public.users and classes table
+        # Get all user_ids from the class_members table for the given class_id
+        member_ids_res = db.table("class_members").select("user_id").eq("class_id", class_id).execute()
+        if not member_ids_res.data:
+            return []
+
+        student_ids = [item['user_id'] for item in member_ids_res.data]
+
+        # Fetch user details from the public.users view
+        users_res = db.table("users").select("id, username, email, role").in_("id", student_ids).execute()
+        if not users_res.data:
+            return []
+        users_map = {user["id"]: user for user in users_res.data}
+
+        # Fetch class details
+        class_details_res = db.table("classes").select("class_name").eq("id", class_id).single().execute()
+        class_name = class_details_res.data["class_name"] if class_details_res.data else "Unknown Class"
+
+        # Combine data, filter for students, and format the response
+        formatted_students = []
+        for member_id_data in member_ids_res.data:
+            user_id = member_id_data["user_id"]
+            user_data = users_map.get(user_id)
+
+            if user_data and user_data.get("role") == "student":
+                formatted_students.append({
+                    "id": user_data.get("id"),
+                    "username": user_data.get("username"),
+                    "email": user_data.get("email"),
+                    "role": user_data.get("role"),
+                    "class_name": class_name
+                })
+        
+        return formatted_students
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=traceback.format_exc())
