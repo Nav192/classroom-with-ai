@@ -1,6 +1,6 @@
 import React from "react";
-import { Link, Outlet, useNavigate } from "react-router-dom";
-import { Home, Book, Users, BarChart, MessageSquare, LogOut } from 'lucide-react';
+import { Link, Outlet, useNavigate, useLocation } from "react-router-dom";
+import { Home, Book, Users, BarChart, MessageSquare, LogOut, Search, Bell, User as UserIcon } from 'lucide-react';
 
 const navLinks = {
   admin: [
@@ -28,18 +28,23 @@ const navLinks = {
 function Sidebar() {
   const userRole = localStorage.getItem("user_role");
   const links = navLinks[userRole] || [];
+  const location = useLocation();
 
   return (
-    <aside className="w-64 bg-card text-card-foreground p-4 border-r border-border">
-      <h2 className="text-2xl font-bold mb-8">E-Learning</h2>
-      <nav className="flex flex-col gap-2">
+    <aside className="w-64 bg-gray-800 text-white p-4 border-r border-gray-700 flex flex-col">
+      <h2 className="text-3xl font-bold mb-8 text-center">E-Learning</h2>
+      <nav className="flex flex-col gap-2 flex-grow">
         {links.map((link) => (
           <Link
             key={link.name}
             to={link.path}
-            className="flex items-center gap-3 px-4 py-2 rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
+            className={`flex items-center gap-3 px-4 py-3 rounded-md transition-colors ${
+              location.pathname === link.path
+                ? "bg-blue-600 text-white"
+                : "text-gray-400 hover:bg-gray-700 hover:text-white"
+            }`}
           >
-            <link.icon className="w-5 h-5" />
+            <link.icon className="w-6 h-6" />
             <span>{link.name}</span>
           </Link>
         ))}
@@ -59,10 +64,10 @@ function Header() {
   }
 
   return (
-    <header className="flex justify-end items-center p-4 border-b border-border">
+    <header className="flex justify-end items-center p-4 bg-white shadow-md">
       <button
         onClick={handleLogout}
-        className="flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
+        className="flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium text-gray-600 hover:bg-gray-100 hover:text-gray-800 transition-colors"
       >
         <LogOut className="w-4 h-4" />
         <span>Logout</span>
@@ -73,12 +78,14 @@ function Header() {
 
 export default function DefaultLayout() {
   return (
-    <div className="flex min-h-screen">
+    <div className="flex min-h-screen bg-gray-100">
       <Sidebar />
       <div className="flex-1 flex flex-col">
         <Header />
         <main className="p-8">
-          <Outlet />
+          <div className="bg-white p-8 rounded-lg shadow-md">
+            <Outlet />
+          </div>
         </main>
       </div>
     </div>

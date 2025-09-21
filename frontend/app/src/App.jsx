@@ -1,9 +1,4 @@
-import {
-  BrowserRouter,
-  Routes,
-  Route,
-  Navigate,
-} from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import Signup from "./pages/Signup.jsx";
 import Login from "./pages/Login.jsx";
 import StudentDashboard from "./pages/StudentDashboard.jsx";
@@ -23,52 +18,59 @@ import StudentProgress from "./pages/StudentProgress.jsx";
 
 export default function App() {
   return (
-    <div className="dark bg-background min-h-screen">
-      <BrowserRouter>
-        <Routes>
-          <Route path="/login" element={<Login />} />
-          <Route path="/signup" element={<Signup />} />
+    <BrowserRouter>
+      <Routes>
+        <Route path="/login" element={<Login />} />
+        <Route path="/signup" element={<Signup />} />
 
-          <Route element={<ProtectedRoute allowedRoles={["student", "teacher", "admin"]} />}>
-            <Route element={<DefaultLayout />}>
-              <Route path="/" element={<Navigate to="/login" replace />} />
+        <Route
+          element={
+            <ProtectedRoute allowedRoles={["student", "teacher", "admin"]} />
+          }
+        >
+          <Route element={<DefaultLayout />}>
+            <Route path="/" element={<Navigate to="/login" replace />} />
 
-              {/* Protected Routes */}
-              <Route element={<ProtectedRoute allowedRoles={["student"]} />}>
-                <Route path="/student/dashboard" element={<StudentDashboard />} />
-                <Route path="/student/quiz/:quizId" element={<QuizTaker />} />
-              </Route>
-              <Route element={<ProtectedRoute allowedRoles={["teacher"]} />}>
-                <Route path="/teacher/dashboard" element={<TeacherDashboard />} />
-                <Route path="/teacher/quiz/new" element={<QuizBuilder />} />
-                <Route path="/teacher/student-progress" element={<StudentProgress />} />
-              </Route>
-              <Route element={<ProtectedRoute allowedRoles={["admin"]} />}>
-                <Route path="/admin/dashboard" element={<AdminDashboard />} />
-              </Route>
-
-              {/* Other routes that might need protection or role-based access */}
+            {/* Protected Routes */}
+            <Route element={<ProtectedRoute allowedRoles={["student"]} />}>
+              <Route path="/student/dashboard" element={<StudentDashboard />} />
+              <Route path="/student/quiz/:quizId" element={<QuizTaker />} />
+            </Route>
+            <Route element={<ProtectedRoute allowedRoles={["teacher"]} />}>
+              <Route path="/teacher/dashboard" element={<TeacherDashboard />} />
+              <Route path="/teacher/quiz/new" element={<QuizBuilder />} />
               <Route
-                element={<ProtectedRoute allowedRoles={["teacher", "admin"]} />}
-              >
-                <Route path="/materials" element={<Materials />} />
-                <Route path="/quizzes" element={<Quizzes />} />
-                <Route path="/results" element={<ResultsPage />} />
-                <Route path="/progress" element={<Progress />} />
-              </Route>
-              <Route
-                element={
-                  <ProtectedRoute allowedRoles={["student", "teacher", "admin"]} />
-                }
-              >
-                <Route path="/chat" element={<Chat />} />
-              </Route>
+                path="/teacher/student-progress"
+                element={<StudentProgress />}
+              />
+            </Route>
+            <Route element={<ProtectedRoute allowedRoles={["admin"]} />}>
+              <Route path="/admin/dashboard" element={<AdminDashboard />} />
+            </Route>
+
+            {/* Other routes that might need protection or role-based access */}
+            <Route
+              element={<ProtectedRoute allowedRoles={["teacher", "admin"]} />}
+            >
+              <Route path="/materials" element={<Materials />} />
+              <Route path="/quizzes" element={<Quizzes />} />
+              <Route path="/results" element={<ResultsPage />} />
+              <Route path="/progress" element={<Progress />} />
+            </Route>
+            <Route
+              element={
+                <ProtectedRoute
+                  allowedRoles={["student", "teacher", "admin"]}
+                />
+              }
+            >
+              <Route path="/chat" element={<Chat />} />
             </Route>
           </Route>
+        </Route>
 
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-      </BrowserRouter>
-    </div>
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </BrowserRouter>
   );
 }

@@ -1,6 +1,9 @@
+// tailwind.config.js
+import colors from "tailwindcss/colors";
+
 /** @type {import('tailwindcss').Config} */
 export default {
-  darkMode: ["class"],
+  darkMode: "class",
   content: ["./index.html", "./src/**/*.{js,ts,jsx,tsx}"],
   theme: {
     container: {
@@ -12,6 +15,7 @@ export default {
     },
     extend: {
       colors: {
+        ...colors, // 👉 merge semua warna bawaan Tailwind
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",
         ring: "hsl(var(--ring))",
@@ -48,7 +52,7 @@ export default {
       },
       borderRadius: {
         lg: "var(--radius)",
-        md: `calc(var(--radius) - 2px)`,
+        md: "calc(var(--radius) - 2px)",
         sm: "calc(var(--radius) - 4px)",
       },
       keyframes: {
