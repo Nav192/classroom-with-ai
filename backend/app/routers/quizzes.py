@@ -19,21 +19,27 @@ class QuizIn(BaseModel):
     topic: str
     type: str # 'mcq', 'true_false', 'essay'
     duration_minutes: int
+    max_attempts: Optional[int] = 2
     questions: List[QuestionIn]
 
 class QuestionOut(QuestionIn):
     id: UUID
     class Config: { "from_attributes": True }
 
+class ClassInfo(BaseModel):
+    name: str
+
 class QuizOut(BaseModel):
     id: UUID
     topic: str
     type: str
     class_id: UUID
+    duration_minutes: int
     class Config: { "from_attributes": True }
 
 class QuizWithQuestions(QuizOut):
     questions: List[QuestionOut]
+    classes: Optional[ClassInfo] = None
 
 # --- Endpoints ---
 @router.post("/{class_id}", status_code=status.HTTP_201_CREATED, response_model=QuizOut, dependencies=[Depends(verify_class_membership)])
@@ -55,7 +61,8 @@ def create_quiz(
             "topic": payload.topic,
             "type": payload.type,
             "duration_minutes": payload.duration_minutes,
-            "user_id": teacher_id,
+            "max_attempts": payload.max_attempts,
+            "user_id": str(teacher_id),
         }).execute()
         
         if not quiz_res.data:
@@ -82,7 +89,7 @@ def list_quizzes(
     sb: Client = Depends(get_supabase),
 ):
     """Lists available quizzes for a specific class. User must be a member."""
-    query = sb.table("quizzes").select("id, topic, type, class_id").eq("class_id", str(class_id))
+    query = sb.table("quizzes").select("id, topic, type, class_id, duration_minutes").eq("class_id", str(class_id))
     return query.order("created_at", desc=True).execute().data or []
 
 @router.get("/{quiz_id}/details", response_model=QuizWithQuestions)
@@ -96,8 +103,18 @@ def get_quiz_details(
     if not quiz_res.data:
         raise HTTPException(status_code=404, detail="Quiz not found")
 
+    quiz_data = quiz_res.data
+    class_id = quiz_data.get("class_id")
+
+    # Manually fetch class details
+    if class_id:
+        class_res = sb.table("classes").select("class_name").eq("id", str(class_id)).single().execute()
+        if class_res.data:
+            # Alias class_name to name to match the frontend expectation
+            quiz_data["classes"] = {"name": class_res.data.get("class_name")}
+
     # Verify user is a member of the class this quiz belongs to
-    quiz_class_id = quiz_res.data['class_id']
+    quiz_class_id = quiz_data['class_id']
     user_id = current_user.get('id')
     member_res = sb.table("class_members").select("id").eq("class_id", quiz_class_id).eq("user_id", user_id).single().execute()
     if not member_res.data:
@@ -105,4 +122,26 @@ def get_quiz_details(
 
     questions_res = sb.table("questions").select("*").eq("quiz_id", str(quiz_id)).execute()
     
-    return {**quiz_res.data, "questions": questions_res.data or []}
+    return {**quiz_data, "questions": questions_res.data or []}
+
+@router.delete("/{quiz_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_quiz(
+    quiz_id: UUID,
+    sb: Client = Depends(get_supabase),
+    current_teacher: dict = Depends(get_current_teacher_user),
+):
+    """Deletes a quiz. Only accessible by the teacher who created it."""
+    user_id = current_teacher.get("id")
+
+    # Verify quiz exists and was created by the current teacher
+    quiz_res = sb.table("quizzes").select("id, user_id").eq("id", str(quiz_id)).single().execute()
+    if not quiz_res.data:
+        raise HTTPException(status_code=404, detail="Quiz not found.")
+    
+    if str(quiz_res.data["user_id"]) != str(user_id):
+        raise HTTPException(status_code=403, detail="You are not authorized to delete this quiz.")
+
+    # Delete the quiz (questions and results will be deleted by cascade)
+    sb.table("quizzes").delete().eq("id", str(quiz_id)).execute()
+
+    return

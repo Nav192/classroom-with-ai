@@ -201,7 +201,7 @@ function StatisticsTab({ classId }) {
           materials_completed: materialsCompleted,
           quizzes_attempted: quizzesAttempted,
           materials_progress_percentage: totalStudents > 0 ? Math.round((materialsCompleted / (data.total_materials * totalStudents)) * 100) : 0,
-          quizzes_progress_percentage: totalStudents > 0 ? Math.round((quizzesAttempted / (data.total_quizzes * totalStudents)) * 100) : 0,
+          quizzes_progress_percentage: (totalStudents > 0 && data.total_quizzes > 0) ? Math.round((quizzesAttempted / (data.total_quizzes * totalStudents)) * 100) : 0,
         };
         setProgress(classProgress);
       })
@@ -242,14 +242,14 @@ function StatisticsTab({ classId }) {
 
 // Students Tab Component
 function StudentsTab({ classId, className }) {
-  const [students, setStudents] = useState([]);
+  const [studentData, setStudentData] = useState({ total_materials: 0, student_details: [] });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
   useEffect(() => {
     setLoading(true);
-    api.get(`/classes/${classId}/students`)
-      .then(res => setStudents(res.data))
+    api.get(`/progress/class/${classId}/students`)
+      .then(res => setStudentData(res.data))
       .catch(() => setError("Failed to load students."))
       .finally(() => setLoading(false));
   }, [classId]);
@@ -274,29 +274,32 @@ function StudentsTab({ classId, className }) {
   if (loading) return <p>Loading students...</p>;
   if (error) return <p className="text-red-500">{error}</p>;
 
+  const { total_materials, student_details } = studentData;
+
   return (
     <div className="bg-white p-6 rounded-lg shadow-md border border-gray-200">
       <div className="flex justify-between items-center mb-4">
         <h2 className="text-xl font-semibold">Students</h2>
-        <div className="flex items-center gap-2">
-          <Link to={`/teacher/student-progress?classId=${classId}&className=${className}`} className="bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600 flex items-center gap-2 transition-colors text-sm"><Users size={16} /> View Details</Link>
-          <button onClick={handleDownloadReport} className="bg-gray-600 text-white px-4 py-2 rounded-md hover:bg-gray-700 flex items-center gap-2 transition-colors text-sm"><Download size={16} /> Download Report</button>
-        </div>
+        <button onClick={handleDownloadReport} className="bg-gray-600 text-white px-4 py-2 rounded-md hover:bg-gray-700 flex items-center gap-2 transition-colors text-sm"><Download size={16} /> Download Report</button>
       </div>
-      {students.length > 0 ? (
+      {student_details.length > 0 ? (
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Email</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Student</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Materials Completed</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Quizzes Attempted</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Average Score</th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {students.map((student) => (
-                <tr key={student.id}>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{student.username}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{student.email}</td>
+              {student_details.map((student) => (
+                <tr key={student.user_id}>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{student.username || student.email}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{`${student.materials_completed} / ${total_materials}`}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{student.quizzes_attempted}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{student.average_score !== null ? `${student.average_score}%` : 'N/A'}</td>
                 </tr>
               ))}
             </tbody>
@@ -419,14 +422,108 @@ function UploadMaterialModal({ classId, setIsModalOpen, onMaterialUploaded }) {
 
 // Quizzes Tab Component
 function QuizzesTab({ classId }) {
-  // This would be built out similarly to the other tabs
+  const [quizzes, setQuizzes] = useState([]);
+  const [viewingResultsOfQuizId, setViewingResultsOfQuizId] = useState(null);
+  const [studentStatuses, setStudentStatuses] = useState([]);
+  const [loadingQuizzes, setLoadingQuizzes] = useState(true);
+  const [loadingStatuses, setLoadingStatuses] = useState(false);
+  const [error, setError] = useState("");
+
+  const fetchQuizzes = () => {
+    setLoadingQuizzes(true);
+    setError("");
+    api.get(`/quizzes/${classId}`)
+      .then(res => setQuizzes(res.data || []))
+      .catch(() => setError("Failed to load quizzes."))
+      .finally(() => setLoadingQuizzes(false));
+  };
+
+  useEffect(fetchQuizzes, [classId]);
+
+  const handleViewResults = (quizId) => {
+    if (viewingResultsOfQuizId === quizId) {
+      setViewingResultsOfQuizId(null);
+    } else {
+      setViewingResultsOfQuizId(quizId);
+      setLoadingStatuses(true);
+      setError("");
+      api.get(`/dashboard/teacher/class/${classId}/quiz/${quizId}/status`)
+        .then(res => setStudentStatuses(res.data || []))
+        .catch(() => setError("Failed to load student quiz statuses."))
+        .finally(() => setLoadingStatuses(false));
+    }
+  };
+
+  const handleDeleteQuiz = async (quizId) => {
+    if (window.confirm("Are you sure you want to delete this quiz? This action cannot be undone.")) {
+      try {
+        await api.delete(`/quizzes/${quizId}`);
+        fetchQuizzes();
+      } catch (err) {
+        setError(err.response?.data?.detail || "Failed to delete quiz.");
+      }
+    }
+  };
+
   return (
-    <div className="bg-white p-6 rounded-lg shadow-md border border-gray-200">
-        <div className="flex justify-between items-center mb-4">
-            <h2 className="text-xl font-semibold">Class Quizzes</h2>
-            <Link to={`/teacher/quiz/new?classId=${classId}`} className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 flex items-center gap-2 transition-colors text-sm"><Plus size={16} /> Create Quiz</Link>
-        </div>
-        <p className="text-gray-500 text-center py-10">Quiz management UI goes here.</p>
+    <div className="bg-white p-6 rounded-lg shadow-md border border-gray-200 space-y-6">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+        <h2 className="text-xl font-semibold">Class Quizzes</h2>
+        <Link to={`/teacher/quiz/new?classId=${classId}`} className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 flex items-center gap-2 transition-colors text-sm"><Plus size={16} /> Create Quiz</Link>
+      </div>
+
+      {loadingQuizzes ? <p>Loading quizzes...</p> : (
+        quizzes.length > 0 ? (
+          <ul className="space-y-4">
+            {quizzes.map(quiz => (
+              <li key={quiz.id} className="p-4 rounded-lg bg-gray-50 border border-gray-200">
+                <div className="flex justify-between items-center">
+                  <p className="font-semibold text-gray-800">{quiz.topic}</p>
+                  <div className="flex items-center gap-2">
+                    <button onClick={() => handleViewResults(quiz.id)} className="bg-blue-100 text-blue-700 px-3 py-1 rounded-md hover:bg-blue-200 text-sm font-medium">{viewingResultsOfQuizId === quiz.id ? 'Hide Results' : 'View Results'}</button>
+                    <button onClick={() => handleDeleteQuiz(quiz.id)} className="p-2 text-gray-500 hover:text-red-600 transition-colors" title="Delete Quiz"><Trash2 size={18} /></button>
+                  </div>
+                </div>
+                {viewingResultsOfQuizId === quiz.id && (
+                  <div className="mt-4">
+                    {loadingStatuses ? <p>Loading results...</p> : (
+                      studentStatuses.length > 0 ? (
+                        <div className="overflow-x-auto border-t border-gray-200">
+                          <table className="min-w-full divide-y divide-gray-200">
+                            <thead className="bg-gray-50">
+                              <tr>
+                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Student</th>
+                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Score</th>
+                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Percentage</th>
+                              </tr>
+                            </thead>
+                            <tbody className="bg-white divide-y divide-gray-200">
+                              {studentStatuses.map((status) => (
+                                <tr key={status.student_id}>
+                                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{status.username}</td>
+                                  <td className="px-6 py-4 whitespace-nowrap text-sm">
+                                    <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${status.status === 'Completed' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
+                                      {status.status}
+                                    </span>
+                                  </td>
+                                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{status.score !== null ? `${status.score} / ${status.total}` : 'N/A'}</td>
+                                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{status.percentage !== null ? `${status.percentage}%` : 'N/A'}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      ) : <p className="text-gray-500 text-center py-10">No student has taken this quiz yet.</p>
+                    )}
+                  </div>
+                )}
+              </li>
+            ))}
+          </ul>
+        ) : <p className="text-gray-500 text-center py-10">No quizzes created for this class yet.</p>
+      )}
+      {error && <p className="text-red-500 text-sm mt-4">{error}</p>}
     </div>
   );
 }

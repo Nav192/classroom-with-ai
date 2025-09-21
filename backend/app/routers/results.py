@@ -119,32 +119,37 @@ async def submit_quiz(
 
         answers_to_insert.append({
             "result_id": None, 
-            "question_id": submitted_answer.question_id,
-            "user_id": student_id,
+            "question_id": str(submitted_answer.question_id),
+            "user_id": str(student_id),
             "answer": submitted_answer.response,
             "is_correct": is_correct,
         })
 
     # 4. Insert the main result record
-    result_insert_res = sb.table("results").insert({
-        "quiz_id": payload.quiz_id,
-        "user_id": student_id,
-        "score": score,
-        "total": total_questions,
-        "attempt_number": current_attempt_number,
-        "started_at": payload.started_at.isoformat(),
-        "ended_at": payload.ended_at.isoformat(),
-    }).execute()
+    try:
+        result_insert_res = sb.table("results").insert({
+            "quiz_id": str(payload.quiz_id),
+            "user_id": str(student_id),
+            "score": score,
+            "total": total_questions,
+            "attempt_number": current_attempt_number,
+            "started_at": payload.started_at.isoformat(),
+            "ended_at": payload.ended_at.isoformat(),
+        }).execute()
 
-    if not result_insert_res.data:
-        raise HTTPException(status_code=500, detail="Failed to save quiz result.")
-    
-    new_result = result_insert_res.data[0]
+        if not result_insert_res.data:
+            raise HTTPException(status_code=500, detail="Failed to save quiz result: No data returned from insert.")
+        
+        new_result = result_insert_res.data[0]
+
+    except Exception as e:
+        print(f"Error inserting result into database: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to save quiz result: {str(e)}")
     result_id = new_result['id']
 
     # 5. Update individual answers with the new result_id and insert them
     for answer_data in answers_to_insert:
-        answer_data['result_id'] = result_id
+        answer_data['result_id'] = str(result_id)
     
     sb.table("quiz_answers").insert(answers_to_insert).execute()
 
@@ -288,8 +293,8 @@ def log_cheating_event(
     try:
         sb.table("cheating_logs").insert({
             "user_id": current_user.get("id"),
-            "quiz_id": payload.quiz_id,
-            "result_id": payload.result_id,
+            "quiz_id": str(payload.quiz_id),
+            "result_id": str(payload.result_id) if payload.result_id else None,
             "event_type": payload.event_type,
             "details": payload.details
         }).execute()

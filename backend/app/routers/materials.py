@@ -132,3 +132,38 @@ async def download_material(
         return {"download_url": signed_url_res['signedURL']}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Could not generate download link: {str(e)}")
+
+@router.delete("/{material_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_material(
+    material_id: UUID,
+    sb_admin: Client = Depends(get_supabase_admin),
+    current_teacher: dict = Depends(get_current_teacher_user),
+):
+    """Deletes a material, including its file from storage. Only accessible by teachers."""
+    user_id = current_teacher.get("id")
+
+    # 1. Fetch material to get storage_path and verify ownership
+    material_res = sb_admin.table("materials").select("storage_path, user_id").eq("id", str(material_id)).single().execute()
+    if not material_res.data:
+        raise HTTPException(status_code=404, detail="Material not found.")
+
+    material = material_res.data
+    # Optional: Add a check to ensure only the user who uploaded it can delete it.
+    # if str(material.get('user_id')) != str(user_id):
+    #     raise HTTPException(status_code=403, detail="You are not authorized to delete this material.")
+
+    # 2. Delete the file from storage
+    storage_path = material.get("storage_path")
+    if storage_path:
+        try:
+            sb_admin.storage.from_("materials").remove([storage_path])
+        except Exception as e:
+            # Log the error but proceed to delete the DB record anyway
+            print(f"Error deleting file from storage: {e}")
+
+    # 3. Delete the material record from the database
+    delete_res = sb_admin.table("materials").delete().eq("id", str(material_id)).execute()
+    if not delete_res.data:
+        raise HTTPException(status_code=500, detail="Failed to delete material from database.")
+
+    return

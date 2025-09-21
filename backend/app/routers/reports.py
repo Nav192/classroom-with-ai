@@ -22,60 +22,70 @@ def generate_class_learning_report_csv(
     """
     try:
         # 1. Get all students in the class
-        class_members = sb.table("class_members").select("user_id").eq("class_id", str(class_id)).execute().data or []
-        student_ids = [member['user_id'] for member in class_members]
-        if not student_ids:
+        class_members = sb.table("class_members").select("profiles(id, username, email, role)").eq("class_id", str(class_id)).execute().data or []
+        students = [member["profiles"] for member in class_members if member.get("profiles") and member["profiles"]["role"] == "student"]
+        if not students:
             raise HTTPException(status_code=404, detail="No students found in this class.")
-
-        student_profiles = sb.table("profiles").select("id, email, role").in_("id", student_ids).eq("role", "student").execute().data or []
-        student_id_map = {p['id']: p['email'] for p in student_profiles}
+        
+        student_id_map = {s['id']: {'username': s['username'], 'email': s['email']} for s in students}
+        student_ids = list(student_id_map.keys())
 
         # 2. Get all materials and quizzes for the class
-        materials_in_class = sb.table("materials").select("id, topic").eq("class_id", str(class_id)).execute().data or []
-        material_ids_in_class = [m['id'] for m in materials_in_class]
-
-        quizzes_in_class = sb.table("quizzes").select("id, topic").eq("class_id", str(class_id)).execute().data or []
-        quiz_id_map = {q['id']: q['topic'] for q in quizzes_in_class}
+        materials_in_class = {m['id']: m['topic'] for m in (sb.table("materials").select("id, topic").eq("class_id", str(class_id)).execute().data or [])}
+        quizzes_in_class = {q['id']: q['topic'] for q in (sb.table("quizzes").select("id, topic").eq("class_id", str(class_id)).execute().data or [])}
 
         # 3. Get all relevant progress and result data
-        materials_progress = sb.table("materials_progress").select("user_id, material_id, status").in_("user_id", list(student_id_map.keys())).in_("material_id", material_ids_in_class).execute().data or []
-        quiz_results = sb.table("results").select("user_id, quiz_id, score, total, created_at").in_("user_id", list(student_id_map.keys())).in_("quiz_id", list(quiz_id_map.keys())).execute().data or []
+        materials_progress = sb.table("materials_progress").select("user_id, material_id, status").in_("user_id", student_ids).in_("material_id", list(materials_in_class.keys())).execute().data or []
+        quiz_results = sb.table("results").select("user_id, quiz_id, score, total, attempt_number").in_("user_id", student_ids).in_("quiz_id", list(quizzes_in_class.keys())).execute().data or []
 
-        report_data = []
-        for student_id, student_email in student_id_map.items():
-            # Aggregate material progress for this student
-            student_materials_completed = len([mp for mp in materials_progress if mp['user_id'] == student_id and mp['status'] == 'completed'])
-            
-            # Aggregate quiz results for this student
-            student_quiz_results = [r for r in quiz_results if r['user_id'] == student_id]
-            completed_quizzes_count = len(set(r['quiz_id'] for r in student_quiz_results))
+        # 4. Create Material Progress DataFrame
+        material_report_data = []
+        for progress in materials_progress:
+            student_info = student_id_map.get(progress['user_id'])
+            material_topic = materials_in_class.get(progress['material_id'])
+            if student_info and material_topic:
+                material_report_data.append({
+                    "Student Username": student_info['username'],
+                    "Student Email": student_info['email'],
+                    "Material Topic": material_topic,
+                    "Status": progress['status'],
+                })
+        
+        material_df = pd.DataFrame(material_report_data)
 
-            row = {
-                "ID Siswa": student_id,
-                "Email Siswa": student_email,
-                "Materi Selesai": student_materials_completed,
-                "Total Materi di Kelas": len(materials_in_class),
-                "Kuis Dikerjakan (unik)": completed_quizzes_count,
-                "Total Kuis di Kelas": len(quizzes_in_class),
-            }
+        # 5. Create Quiz Results DataFrame
+        quiz_report_data = []
+        for result in quiz_results:
+            student_info = student_id_map.get(result['user_id'])
+            quiz_topic = quizzes_in_class.get(result['quiz_id'])
+            if student_info and quiz_topic:
+                percentage = (result["score"] / result["total"]) * 100 if result["total"] > 0 else 0
+                quiz_report_data.append({
+                    "Student Username": student_info['username'],
+                    "Student Email": student_info['email'],
+                    "Quiz Topic": quiz_topic,
+                    "Attempt Number": result['attempt_number'],
+                    "Score": result['score'],
+                    "Total": result['total'],
+                    "Percentage": round(percentage, 2),
+                })
 
-            # Add latest score for each quiz taken
-            latest_scores = {}
-            for r in sorted(student_quiz_results, key=lambda x: x['created_at'], reverse=True):
-                quiz_topic = quiz_id_map.get(r['quiz_id'])
-                if quiz_topic and quiz_topic not in latest_scores:
-                    latest_scores[quiz_topic] = f"{r['score']}/{r['total']}"
-            
-            row.update(latest_scores)
-            report_data.append(row)
+        quiz_df = pd.DataFrame(quiz_report_data)
 
-        if not report_data:
-            df = pd.DataFrame(columns=["ID Siswa", "Email Siswa", "Info"]).append([{"Info": "Tidak ada data progres siswa untuk dilaporkan di kelas ini."}])
-        else:
-            df = pd.DataFrame(report_data).fillna("")
-
+        # 6. Combine into a single CSV string
         buf = io.StringIO()
-        df.to_csv(buf, index=False)
+        if not material_df.empty:
+            buf.write("Material Progress\n")
+            material_df.to_csv(buf, index=False)
+            buf.write("\n\n")
+        
+        if not quiz_df.empty:
+            buf.write("Quiz Results\n")
+            quiz_df.to_csv(buf, index=False)
+
+        if buf.tell() == 0:
+            buf.write("No data available for this report.")
+
         buf.seek(0)
 
         headers = {

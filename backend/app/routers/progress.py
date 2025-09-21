@@ -43,6 +43,10 @@ class StudentProgressDetail(BaseModel):
     quizzes_attempted: int
     average_score: Optional[float] = None
 
+class StudentProgressDetailsResponse(BaseModel):
+    total_materials: int
+    student_details: List[StudentProgressDetail]
+
 # --- Endpoints ---
 
 @router.get("/class/{class_id}", response_model=ClassProgressResponse, dependencies=[Depends(verify_class_membership)])
@@ -180,7 +184,7 @@ def complete_material(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"An error occurred: {str(e)}")
 
-@router.get("/class/{class_id}/students", response_model=List[StudentProgressDetail], dependencies=[Depends(verify_class_membership)])
+@router.get("/class/{class_id}/students", response_model=StudentProgressDetailsResponse, dependencies=[Depends(verify_class_membership)])
 def get_student_progress_in_class(
     class_id: UUID,
     sb: Client = Depends(get_supabase),
@@ -188,30 +192,63 @@ def get_student_progress_in_class(
 ):
     """(For Teachers) Get detailed progress for all students in a specific class."""
     try:
+        # Get total materials for the class
+        materials_in_class = sb.table("materials").select("id", count='exact').eq("class_id", str(class_id)).execute()
+        total_materials = materials_in_class.count
+
         # Get all students in the class
         class_members = sb.table("class_members").select("user_id").eq("class_id", str(class_id)).execute().data or []
         student_ids = [member['user_id'] for member in class_members]
 
         if not student_ids:
-            return []
+            return StudentProgressDetailsResponse(total_materials=total_materials, student_details=[])
 
         # Get profiles to filter for students and get emails/usernames
         student_profiles = sb.table("profiles").select("id, username, email, role").in_("id", student_ids).eq("role", "student").execute().data or []
         student_id_map = {p['id']: {"email": p['email'], "username": p['username']} for p in student_profiles}
 
-        # Fetch all progress data for these students
-        materials_progress = sb.table("materials_progress").select("user_id, status").in_("user_id", list(student_id_map.keys())).execute().data or []
-        quiz_results = sb.table("results").select("user_id, quiz_id, score").in_("user_id", list(student_id_map.keys())).execute().data or []
+        # Fetch all progress data for these students for this class
+        materials_in_class_ids = [m['id'] for m in (sb.table("materials").select("id").eq("class_id", str(class_id)).execute().data or [])]
+        materials_progress = sb.table("materials_progress").select("user_id, material_id, status").in_("user_id", list(student_id_map.keys())).in_("material_id", materials_in_class_ids).execute().data or []
+        # Get all quiz IDs for the class
+        class_quizzes = sb.table("quizzes").select("id").eq("class_id", str(class_id)).execute().data or []
+        class_quiz_ids = [q['id'] for q in class_quizzes]
+        quiz_results = sb.table("results").select("user_id, quiz_id, score, total, created_at").in_("user_id", list(student_id_map.keys())).in_("quiz_id", class_quiz_ids).execute().data or []
 
         student_details = []
         for student_id, profile in student_id_map.items():
             mats_completed = len([p for p in materials_progress if p['user_id'] == student_id and p['status'] == 'completed'])
             
             student_quiz_results = [r for r in quiz_results if r['user_id'] == student_id]
-            quizzes_attempted = len(set(r['quiz_id'] for r in student_quiz_results))
             
-            total_score = sum(r['score'] for r in student_quiz_results)
-            average_score = total_score / len(student_quiz_results) if student_quiz_results else None
+            # Get the latest result for each quiz
+            latest_results = {}
+            for result in sorted(student_quiz_results, key=lambda x: x['created_at'], reverse=True):
+                if result['quiz_id'] not in latest_results:
+                    latest_results[result['quiz_id']] = result
+            
+            latest_student_results = list(latest_results.values())
+            
+            quizzes_attempted = len(latest_student_results)
+            
+            # Calculate quiz average score
+            total_quiz_score = sum(r['score'] for r in latest_student_results)
+            total_quiz_possible_score = sum(r['total'] for r in latest_student_results)
+            
+            quiz_average_percentage = 0.0 # Default to 0.0 if no quizzes attempted
+            if total_quiz_possible_score > 0:
+                quiz_average_percentage = (total_quiz_score / total_quiz_possible_score) * 100
+            
+            # Calculate materials progress percentage
+            materials_progress_percentage = 0.0
+            if total_materials > 0:
+                materials_progress_percentage = (mats_completed / total_materials) * 100
+
+            # Calculate overall progress percentage
+            overall_progress_percentage = 0.0
+            # Check if there are any materials or quizzes to progress on
+            if total_materials > 0 or len(latest_student_results) > 0:
+                overall_progress_percentage = (materials_progress_percentage + quiz_average_percentage) / 2
 
             student_details.append(StudentProgressDetail(
                 user_id=student_id,
@@ -219,10 +256,10 @@ def get_student_progress_in_class(
                 email=profile['email'],
                 materials_completed=mats_completed,
                 quizzes_attempted=quizzes_attempted,
-                average_score=average_score
+                average_score=round(overall_progress_percentage, 2) # Assign overall progress to average_score
             ))
 
-        return student_details
+        return StudentProgressDetailsResponse(total_materials=total_materials, student_details=student_details)
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"An error occurred: {str(e)}")

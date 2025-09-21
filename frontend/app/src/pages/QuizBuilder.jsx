@@ -22,6 +22,7 @@ export default function QuizBuilder() {
 
   const [topic, setTopic] = useState('');
   const [duration, setDuration] = useState(30);
+  const [maxAttempts, setMaxAttempts] = useState(2);
   const [quizType, setQuizType] = useState('mcq');
   const [questions, setQuestions] = useState([{ text: '', options: ['', ''], answer: '' }]);
   
@@ -95,6 +96,7 @@ export default function QuizBuilder() {
       topic,
       type: quizType,
       duration_minutes: parseInt(duration, 10),
+      max_attempts: parseInt(maxAttempts, 10),
       questions: questions.map(q => ({...q, type: quizType}))
     };
 
@@ -158,6 +160,10 @@ export default function QuizBuilder() {
                 <div className="space-y-2">
                     <label htmlFor="duration" className="text-sm font-medium">Duration (minutes)</label>
                     <input type="number" id="duration" value={duration} onChange={e => setDuration(e.target.value)} required min="1" className="w-full px-3 py-2 bg-input border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-primary"/>
+                </div>
+                <div className="space-y-2">
+                    <label htmlFor="maxAttempts" className="text-sm font-medium">Max Attempts</label>
+                    <input type="number" id="maxAttempts" value={maxAttempts} onChange={e => setMaxAttempts(e.target.value)} required min="1" className="w-full px-3 py-2 bg-input border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-primary"/>
                 </div>
                 <div className="space-y-2">
                     <label htmlFor="quizType" className="text-sm font-medium">Question Type</label>

@@ -81,23 +81,6 @@ export default function QuizTaker() {
     fetchQuiz();
   }, [quizId]);
 
-  useEffect(() => {
-    if (timeLeft <= 0 || endedAt) return;
-
-    const timer = setInterval(() => {
-      setTimeLeft(prevTime => {
-        if (prevTime <= 1) {
-          clearInterval(timer);
-          handleSubmit(true);
-          return 0;
-        }
-        return prevTime - 1;
-      });
-    }, 1000);
-
-    return () => clearInterval(timer);
-  }, [timeLeft, endedAt, handleSubmit]);
-
   const handleAnswerChange = (questionId, value) => {
     setAnswers(prev => ({ ...prev, [questionId]: value }));
   };
@@ -131,6 +114,23 @@ export default function QuizTaker() {
     } 
   }, [endedAt, quiz, answers, startedAt, cheatingEventsCount, sendCheatingEvent]);
 
+  useEffect(() => {
+    if (timeLeft <= 0 || endedAt) return;
+
+    const timer = setInterval(() => {
+      setTimeLeft(prevTime => {
+        if (prevTime <= 1) {
+          clearInterval(timer);
+          handleSubmit(true);
+          return 0;
+        }
+        return prevTime - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [timeLeft, endedAt, handleSubmit]);
+
   if (loading) return <div className="p-6">Loading quiz...</div>;
   if (error) return <div className="p-6 text-destructive">{error}</div>;
   if (!quiz) return <div className="p-6">Quiz not found.</div>;
@@ -141,11 +141,29 @@ export default function QuizTaker() {
     return `${minutes}:${remainingSeconds < 10 ? '0' : ''}${remainingSeconds}`;
   };
 
+  if (submissionMessage) {
+    return (
+      <div className="max-w-4xl mx-auto text-center py-16">
+        <div className={`p-8 rounded-lg shadow-md border ${submissionMessage.includes('successfully') ? 'bg-green-100 border-green-200' : 'bg-red-100 border-red-200'}`}>
+          <h2 className="text-2xl font-bold mb-4">{submissionMessage.includes('successfully') ? 'Quiz Submitted!' : 'Submission Failed'}</h2>
+          <p className={`text-lg ${submissionMessage.includes('successfully') ? 'text-green-800' : 'text-red-800'}`}>{submissionMessage}</p>
+          <button
+            type="button"
+            onClick={() => navigate('/student/dashboard')}
+            className="mt-6 bg-primary text-primary-foreground px-8 py-3 rounded-md hover:bg-primary/90 transition-colors"
+          >
+            Back to Dashboard
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="max-w-4xl mx-auto">
       <div className="bg-card text-card-foreground p-8 rounded-lg shadow-md border border-border">
         <h1 className="text-3xl font-bold mb-2">{quiz.topic}</h1>
-        <p className="text-muted-foreground mb-2">Class: {quiz.class_id} | Type: {quiz.type}</p>
+        <p className="text-muted-foreground mb-2">Class: {quiz.classes?.name || quiz.class_id} | Type: {quiz.type}</p>
         <p className="text-muted-foreground mb-6">Duration: {quiz.duration_minutes} minutes</p>
 
         <div className="flex justify-between items-center mb-6 p-3 bg-primary/10 rounded-md border border-primary/20">
@@ -195,7 +213,7 @@ export default function QuizTaker() {
                       disabled={!!endedAt}
                       className="form-radio text-primary focus:ring-primary"
                     />
-                    <span>False</span>
+                    <span>True</span>
                   </label>
                   <label className="inline-flex items-center gap-2 p-3 rounded-md hover:bg-muted/50 cursor-pointer">
                     <input
@@ -207,7 +225,7 @@ export default function QuizTaker() {
                       disabled={!!endedAt}
                       className="form-radio text-primary focus:ring-primary"
                     />
-                    <span>True</span>
+                    <span>False</span>
                   </label>
                 </div>
               )}

@@ -14,13 +14,31 @@ create table if not exists public.profiles (
 create table if not exists public.materials (
     id uuid default gen_random_uuid() primary key,
     user_id uuid references public.profiles(id) on delete set null, -- Added: Who uploaded it
-    class_id text not null,
+    class_id uuid references public.classes(id) on delete cascade,
     topic text not null,
     filename text,
     mime_type text,
     file_type text check (file_type in ('pdf','ppt','txt')),
     storage_path text, -- Added: Path in Supabase Storage
     created_at timestamp with time zone default now()
+);
+
+-- Classes
+create table if not exists public.classes (
+    id uuid default gen_random_uuid() primary key,
+    created_by uuid references public.profiles(id) on delete cascade,
+    class_name text not null,
+    class_code text unique not null,
+    grade text,
+    created_at timestamp with time zone default now()
+);
+
+create table if not exists public.class_members (
+    id uuid default gen_random_uuid() primary key,
+    class_id uuid references public.classes(id) on delete cascade,
+    user_id uuid references public.profiles(id) on delete cascade,
+    created_at timestamp with time zone default now(),
+    unique (class_id, user_id)
 );
 
 -- Embeddings for RAG
@@ -48,12 +66,12 @@ create table if not exists public.materials_progress (
 create table if not exists public.quizzes (
     id uuid default gen_random_uuid() primary key,
     user_id uuid references public.profiles(id) on delete set null, -- Added: Who created it
-    class_id text not null,
+    class_id uuid references public.classes(id) on delete cascade,
     topic text not null,
     type text check (type in ('mcq','true_false','essay')) not null,
     duration_minutes int not null,
     max_attempts int default 2,
-    created_at timestamp with time zone default now()
+    created_at timestamp with time zone default now() -- Refreshed schema
 );
 
 create table if not exists public.questions (
@@ -144,20 +162,24 @@ $;
 -- RLS Policies for Materials
 alter table public.materials enable row level security;
 
+DROP POLICY IF EXISTS "Allow authenticated read access to materials" ON public.materials;
 create policy "Allow authenticated read access to materials"
 on public.materials for select
 to authenticated
 using (true);
 
+DROP POLICY IF EXISTS "Allow teachers or admins to insert materials" ON public.materials;
 create policy "Allow teachers or admins to insert materials"
 on public.materials for insert
 to authenticated
 with check ((select role from public.profiles where id = auth.uid()) in ('teacher', 'admin'));
 
+DROP POLICY IF EXISTS "Allow teachers to update their own materials" ON public.materials;
 create policy "Allow teachers to update their own materials"
 on public.materials for update
 using (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Allow teachers to delete their own materials" ON public.materials;
 create policy "Allow teachers to delete their own materials"
 on public.materials for delete
 using (auth.uid() = user_id);
