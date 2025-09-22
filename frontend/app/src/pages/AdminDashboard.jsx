@@ -108,6 +108,21 @@ function UserManagementTab({ setStats }) {
     }
   };
 
+  const handleSaveUser = async (userData) => {
+    try {
+      if (editingUser) {
+        await api.put(`/admin/users/${editingUser.id}`, userData);
+      } else {
+        await api.post("/admin/users", userData);
+      }
+      fetchUsers();
+      setIsModalOpen(false);
+    } catch (err) {
+      const errorMsg = err.response?.data?.detail || (editingUser ? "Failed to update user." : "Failed to create user.");
+      alert(errorMsg);
+    }
+  };
+
   const filteredUsers = users
     .filter(u => u.role === activeRoleTab)
     .filter(u => 
@@ -174,7 +189,7 @@ function UserManagementTab({ setStats }) {
           </table>
         </div>
       )}
-      {isModalOpen && <UserModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} onSubmit={() => { fetchUsers(); setIsModalOpen(false); }} user={editingUser} />}
+      {isModalOpen && <UserModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} onSubmit={handleSaveUser} user={editingUser} />}
     </div>
   );
 }

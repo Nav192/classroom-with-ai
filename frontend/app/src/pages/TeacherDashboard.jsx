@@ -200,7 +200,7 @@ function StatisticsTab({ classId }) {
           total_quizzes: data.total_quizzes * totalStudents,
           materials_completed: materialsCompleted,
           quizzes_attempted: quizzesAttempted,
-          materials_progress_percentage: totalStudents > 0 ? Math.round((materialsCompleted / (data.total_materials * totalStudents)) * 100) : 0,
+          materials_progress_percentage: (totalStudents > 0 && data.total_materials > 0) ? Math.round((materialsCompleted / (data.total_materials * totalStudents)) * 100) : 0,
           quizzes_progress_percentage: (totalStudents > 0 && data.total_quizzes > 0) ? Math.round((quizzesAttempted / (data.total_quizzes * totalStudents)) * 100) : 0,
         };
         setProgress(classProgress);
@@ -290,7 +290,6 @@ function StudentsTab({ classId, className }) {
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Student</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Materials Completed</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Quizzes Attempted</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Average Score</th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
@@ -299,7 +298,6 @@ function StudentsTab({ classId, className }) {
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{student.username || student.email}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{`${student.materials_completed} / ${total_materials}`}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{student.quizzes_attempted}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{student.average_score !== null ? `${student.average_score}%` : 'N/A'}</td>
                 </tr>
               ))}
             </tbody>

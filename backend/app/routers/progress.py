@@ -57,11 +57,12 @@ def get_class_progress(
 ):
     """(For Teachers) Get progress summary for all students in a specific class."""
     try:
-        # Get total materials and quizzes for the class
         materials_in_class = sb.table("materials").select("id", count='exact').eq("class_id", str(class_id)).execute()
         quizzes_in_class = sb.table("quizzes").select("id", count='exact').eq("class_id", str(class_id)).execute()
         total_materials = materials_in_class.count
         total_quizzes = quizzes_in_class.count
+        materials_in_class_ids = [m['id'] for m in materials_in_class.data]
+        quizzes_in_class_ids = [q['id'] for q in quizzes_in_class.data]
 
         # Get all students in the class
         class_members = sb.table("class_members").select("user_id").eq("class_id", str(class_id)).execute().data or []
@@ -74,9 +75,14 @@ def get_class_progress(
         student_profiles = sb.table("profiles").select("id, email, username, role").in_("id", student_ids).eq("role", "student").execute().data or []
         student_id_map = {p['id']: {'email': p['email'], 'username': p['username']} for p in student_profiles}
 
-        # Fetch all progress data for these students
-        materials_progress = sb.table("materials_progress").select("user_id, status").in_("user_id", list(student_id_map.keys())).execute().data or []
-        quiz_results = sb.table("results").select("user_id, quiz_id").in_("user_id", list(student_id_map.keys())).execute().data or []
+        # Fetch all progress data for these students for this class
+        materials_progress = []
+        if materials_in_class_ids:
+            materials_progress = sb.table("materials_progress").select("user_id, status").in_("user_id", student_ids).in_("material_id", materials_in_class_ids).execute().data or []
+        
+        quiz_results = []
+        if quizzes_in_class_ids:
+            quiz_results = sb.table("results").select("user_id, quiz_id").in_("user_id", student_ids).in_("quiz_id", quizzes_in_class_ids).execute().data or []
 
         summaries = []
         for student_id, student_data in student_id_map.items():
@@ -114,14 +120,17 @@ def get_my_progress_in_class(
     user_id = current_user.get("id")
 
     try:
-        # Get total materials and quizzes for the class
         materials_in_class = sb.table("materials").select("id", count='exact').eq("class_id", str(class_id)).execute()
-        quizzes_in_class = sb.table("quizzes").select("id", count='exact').eq("class_id", str(class_id)).execute()
         total_materials = materials_in_class.count
+        materials_in_class_ids = [m['id'] for m in materials_in_class.data]
+
+        quizzes_in_class = sb.table("quizzes").select("id", count='exact').eq("class_id", str(class_id)).execute()
         total_quizzes = quizzes_in_class.count
 
         # Get user's progress
-        mats_completed = sb.table("materials_progress").select("id", count='exact').eq("user_id", user_id).eq("status", "completed").execute().count
+        mats_completed = 0
+        if materials_in_class_ids:
+            mats_completed = sb.table("materials_progress").select("id", count='exact').eq("user_id", user_id).eq("status", "completed").in_("material_id", materials_in_class_ids).execute().count
         
         # This is tricky, we need to count distinct quizzes from results that belong to this class
         quiz_results = sb.table("results").select("quiz_id").eq("user_id", user_id).execute().data or []

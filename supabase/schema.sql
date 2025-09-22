@@ -121,13 +121,18 @@ create or replace function public.create_user_profile()
 returns trigger
 language plpgsql
 security definer set search_path = public
-as $
+as $$
 begin
   insert into public.profiles (id, email, role, username)
-  values (new.id, new.email, new.raw_user_meta_data->>'role', new.raw_user_meta_data->>'username');
+  values (
+    new.id,
+    new.email,
+    new.raw_user_meta_data->>'role',
+    coalesce(new.raw_user_meta_data->>'username', split_part(new.email, '@', 1))
+  );
   return new;
 end;
-$;
+$$;
 
 -- Trigger to run the function after a new user is created
 create or replace trigger on_auth_user_created
@@ -147,7 +152,7 @@ returns table (
   similarity float
 )
 language sql stable
-as $
+as $$
   select
     material_embeddings.id,
     material_embeddings.material_id,
@@ -157,7 +162,19 @@ as $
   where 1 - (material_embeddings.embedding <=> query_embedding) > match_threshold
   order by similarity desc
   limit match_count;
-$;
+$$;
+
+-- RLS Policies for Profiles
+alter table public.profiles enable row level security;
+
+create policy "Allow users to view their own profile"
+on public.profiles for select
+using (auth.uid() = id);
+
+create policy "Allow admins to manage all profiles"
+on public.profiles for all
+using ((select role from public.profiles where id = auth.uid()) = 'admin')
+with check ((select role from public.profiles where id = auth.uid()) = 'admin');
 
 -- RLS Policies for Materials
 alter table public.materials enable row level security;

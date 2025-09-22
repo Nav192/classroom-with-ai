@@ -46,11 +46,13 @@ class ClassAdminResponse(BaseModel):
 def list_users(sb: Client = Depends(get_supabase_admin)):
     try:
         response = sb.table("profiles").select("id, email, role, username").execute()
-        return response.data or []
+        users_data = response.data or []
+        for user in users_data:
+            if user.get("username") is None:
+                user["username"] = ""
+        return users_data
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
-
 
 @router.post("/users", response_model=UserResponse, status_code=status.HTTP_201_CREATED, summary="Create a new user")
 def create_user(user_data: UserCreate, sb: Client = Depends(get_supabase_admin)):
@@ -71,27 +73,49 @@ def create_user(user_data: UserCreate, sb: Client = Depends(get_supabase_admin))
 
 @router.put("/users/{user_id}", response_model=UserResponse, summary="Update a user's role or email")
 def update_user(user_id: UUID, user_data: UserUpdate, sb: Client = Depends(get_supabase_admin)):
+    print(f"Attempting to update user {user_id} with data: {user_data.model_dump_json()}")
     try:
+        # 1. Update Supabase Auth
         auth_updates = {}
         if user_data.email:
             auth_updates["email"] = user_data.email
         if user_data.role:
             auth_updates["user_metadata"] = {"role": user_data.role}
 
-        # Update Supabase Auth first (source of truth)
         if auth_updates:
-            sb.auth.admin.update_user_by_id(str(user_id), auth_updates)
+            print("Updating Supabase Auth...")
+            update_res = sb.auth.admin.update_user_by_id(str(user_id), auth_updates)
+            print(f"Auth update response: {update_res}")
 
-        # Then, update the local profiles table to match
+        # 2. Update public.profiles table
+        profile_updates = {}
         if user_data.role:
-            sb.table("profiles").update({"role": user_data.role}).eq("id", str(user_id)).execute()
+            profile_updates["role"] = user_data.role
         if user_data.email:
-            sb.table("profiles").update({"email": user_data.email}).eq("id", str(user_id)).execute()
+            profile_updates["email"] = user_data.email
+        
+        if profile_updates:
+            print("Updating public.profiles table...")
+            profile_res = sb.table("profiles").update(profile_updates).eq("id", str(user_id)).execute()
+            print(f"Profiles update response: {profile_res.data}")
+            if not profile_res.data:
+                print("Warning: The update query on the profiles table did not affect any rows.")
 
+        # 3. Fetch and return the updated profile
+        print("Fetching updated profile...")
         updated_profile = sb.table("profiles").select("*").eq("id", str(user_id)).single().execute()
+        print(f"Final profile data: {updated_profile.data}")
         return updated_profile.data
+        
     except AuthApiError as e:
+        print(f"Auth API Error: {e}")
         raise HTTPException(status_code=e.status, detail=e.message)
+    except Exception as e:
+        print(f"An unexpected error occurred in update_user: {e}")
+        # Check if it's a PostgrestError for more details
+        if hasattr(e, 'message'):
+             raise HTTPException(status_code=500, detail=e.message)
+        raise HTTPException(status_code=500, detail=f"An unexpected error occurred: {str(e)}")
 
 @router.delete("/users/{user_id}", status_code=status.HTTP_204_NO_CONTENT, summary="Permanently delete a user")
 def delete_user(user_id: UUID, sb: Client = Depends(get_supabase_admin)):

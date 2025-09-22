@@ -12,16 +12,17 @@ class LoginRequest(BaseModel):
     password: str
 
 
+class RegisterRequest(BaseModel):
+    email: EmailStr
+    password: str
+    username: str
+
+
 class LoginResponse(BaseModel):
     access_token: str
     user_id: str
     role: str
-
-
-class RegisterRequest(BaseModel):
-    email: EmailStr
-    password: str
-    role: str  # "teacher" | "student" | "admin"
+    username: str
 
 
 @router.post("/login", response_model=LoginResponse)
@@ -32,13 +33,14 @@ def login(payload: LoginRequest, sb: Client = Depends(get_supabase)):
             raise HTTPException(status_code=401, detail="Invalid credentials")
 
         # Get role from our public.profiles table
-        profile = sb.table("profiles").select("role").eq("id", res.user.id).single().execute()
+        profile = sb.table("profiles").select("role, username").eq("id", res.user.id).single().execute()
         if not profile.data or not profile.data.get("role"):
             raise HTTPException(status_code=404, detail="User profile or role not found.")
 
         user_role = profile.data["role"]
+        user_username = profile.data["username"]
 
-        return LoginResponse(access_token=res.session.access_token, user_id=res.user.id, role=user_role)
+        return LoginResponse(access_token=res.session.access_token, user_id=res.user.id, role=user_role, username=user_username)
     except Exception as exc:
         raise HTTPException(status_code=401, detail=str(exc))
 
@@ -51,7 +53,7 @@ def signup(payload: RegisterRequest, sb: Client = Depends(get_supabase)):
             {
                 "email": payload.email,
                 "password": payload.password,
-                "options": {"data": {"role": payload.role}},
+                "options": {"data": {"role": "student", "username": payload.username}},
             }
         )
         if res.user is None:
