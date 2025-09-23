@@ -1,15 +1,18 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 import supabase
+import traceback
 from ..dependencies import get_supabase, get_current_user
-from typing import List
+from typing import List, Optional
 from uuid import UUID
+from datetime import datetime
 
 router = APIRouter()
 
 class ClassCreate(BaseModel):
     class_name: str
-    grade: str # Added
+    grade: str
+    teacher_name: Optional[str] = None
 
 class ClassJoin(BaseModel):
     class_code: str
@@ -18,7 +21,9 @@ class ClassResponse(BaseModel):
     id: UUID
     class_name: str
     class_code: str
-    grade: str # Added
+    grade: str
+    teacher_name: Optional[str] = None
+    created_at: datetime # Changed from str to datetime
     class Config:
         from_attributes = True
 
@@ -35,21 +40,39 @@ def create_class(
     user: dict = Depends(get_current_user),
     db: supabase.client.Client = Depends(get_supabase)
 ):
-    if user.get("role") != "admin":
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only admins can create classes")
+    if user.get("role") not in ["admin", "teacher"]:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only admins and teachers can create classes")
 
     try:
         new_class = db.table("classes").insert({
             "class_name": class_data.class_name,
-            "grade": class_data.grade, # Added
-            "created_by": user.get("id")
+            "grade": class_data.grade,
+            "created_by": user.get("id"),
+            "teacher_name": class_data.teacher_name # Store the input teacher name
         }).execute()
 
         if not new_class.data:
             raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to create class")
 
-        return new_class.data[0]
+        new_class_data = new_class.data[0]
+
+        # Automatically add the teacher as a member of the class they created
+        db.table("class_members").insert({
+            "class_id": new_class_data['id'],
+            "user_id": user.get("id")
+        }).execute()
+
+        # Use the teacher_name provided in the form for this specific class response
+        print(f"DEBUG_GEMINI_V1: class_data.teacher_name before assignment: {class_data.teacher_name}") # Debug print
+        new_class_data["teacher_name"] = class_data.teacher_name
+
+        print(f"Returning new_class_data: {new_class_data}") # Add this print statement
+
+        return new_class_data
+
     except Exception as e:
+        print(f"Error creating class: {e}")
+        traceback.print_exc() # Print full traceback to console
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -99,7 +122,26 @@ def get_my_classes(
         
         class_ids = [item['class_id'] for item in member_of_res.data]
         
-        classes_res = db.table("classes").select("id, class_name, class_code, grade").in_("id", class_ids).execute() # Added grade
+        classes_res = db.table("classes").select("id, class_name, class_code, grade, teacher_name, created_at").in_("id", class_ids).execute()
+        
+        return classes_res.data or []
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/created-by-me", response_model=List[ClassResponse], summary="Get all classes created by the current user (teacher)")
+def get_classes_created_by_me(
+    user: dict = Depends(get_current_user),
+    db: supabase.client.Client = Depends(get_supabase)
+):
+    """Fetches all classes created by the current user."""
+    try:
+        user_id = user.get("id")
+        
+        classes_res = db.table("classes").select("id, class_name, class_code, grade, teacher_name, created_at").eq("created_by", user_id).execute()
         
         return classes_res.data or []
 

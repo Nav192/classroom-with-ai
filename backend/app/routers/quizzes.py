@@ -71,7 +71,7 @@ def create_quiz(
         
         new_quiz = quiz_res.data[0]
         questions_to_insert = [
-            {**q.model_dump(), "quiz_id": new_quiz['id']} for q in payload.questions
+            {**q.model_dump(exclude={'id'}), "quiz_id": new_quiz['id']} for q in payload.questions
         ]
         
         questions_res = sb.table("questions").insert(questions_to_insert).execute()

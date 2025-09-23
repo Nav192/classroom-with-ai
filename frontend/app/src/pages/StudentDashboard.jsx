@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import { BookCopy, Send, User, Bot, PlayCircle, LogIn, Users, Download, Eye, ChevronDown, PlusCircle } from "lucide-react";
+import { BookCopy, Send, User, Bot, PlayCircle, LogIn, Users, Download, Eye, ChevronDown, PlusCircle, ChevronLeft } from "lucide-react";
 import api from "../services/api";
 
 // Main Dashboard Component
@@ -9,9 +9,9 @@ export default function StudentDashboard() {
   const [user, setUser] = useState(null);
   const [username, setUsername] = useState("");
   const [myClasses, setMyClasses] = useState([]);
-  const [selectedClass, setSelectedClass] = useState(null);
   const [loadingClasses, setLoadingClasses] = useState(true);
   const [classError, setClassError] = useState("");
+  const [selectedClassDetails, setSelectedClassDetails] = useState(null); // New state for selected class
 
   useEffect(() => {
     const storedUserId = localStorage.getItem("user_id");
@@ -31,9 +31,6 @@ export default function StudentDashboard() {
       const response = await api.get("/classes/me");
       const classes = response.data || [];
       setMyClasses(classes);
-      if (classes.length > 0) {
-        setSelectedClass(classes[0]);
-      }
     } catch (err) {
       setClassError("Failed to load your classes.");
     } finally {
@@ -47,31 +44,31 @@ export default function StudentDashboard() {
     <div className="space-y-6">
       <DashboardHeader 
         username={username} 
-        myClasses={myClasses} 
-        selectedClass={selectedClass} 
-        setSelectedClass={setSelectedClass} 
-        loadingClasses={loadingClasses}
         onClassJoined={fetchMyClasses}
       />
 
       {classError && <p className="text-sm text-destructive text-center py-2">{classError}</p>}
 
-      {selectedClass ? (
-        <ClassTabs selectedClass={selectedClass} />
-      ) : (
+      {loadingClasses ? (
+        <p className="text-center py-20">Loading your classes...</p>
+      ) : selectedClassDetails ? (
+        <ClassTabs selectedClass={selectedClassDetails} onBackToClassSelection={() => setSelectedClassDetails(null)} />
+      ) : myClasses.length === 0 ? (
         <div className="text-center py-20 bg-white rounded-lg shadow-md border border-gray-200">
           <Users size={48} className="mx-auto text-gray-400 mb-4" />
           <h2 className="text-xl font-semibold text-gray-700">Welcome, {username}!</h2>
           <p className="text-gray-500 mt-2">You are not enrolled in any classes yet.</p>
           <p className="text-gray-500 mt-1">Join a class to get started.</p>
         </div>
+      ) : (
+        <ClassGridDisplay myClasses={myClasses} onSelectClass={setSelectedClassDetails} />
       )}
     </div>
   );
 }
 
 // Header Component
-function DashboardHeader({ username, myClasses, selectedClass, setSelectedClass, loadingClasses, onClassJoined }) {
+function DashboardHeader({ username, onClassJoined }) {
   const [joinCode, setJoinCode] = useState("");
   const [isJoining, setIsJoining] = useState(false);
   const [joinError, setJoinError] = useState("");
@@ -116,23 +113,6 @@ function DashboardHeader({ username, myClasses, selectedClass, setSelectedClass,
             {isJoining ? "Joining..." : "Join"}
           </button>
         </form>
-        <div className="w-full md:w-auto">
-          {loadingClasses ? <p className="text-sm text-gray-500">Loading...</p> : (
-            <select 
-              value={selectedClass ? selectedClass.id : ""} 
-              onChange={(e) => {
-                const newClass = myClasses.find(c => c.id === e.target.value);
-                setSelectedClass(newClass);
-              }}
-              className="w-full px-3 py-2 bg-gray-50 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              disabled={myClasses.length === 0}
-            >
-              {myClasses.length > 0 ? 
-                myClasses.map(c => <option key={c.id} value={c.id}>{c.class_name}</option>) : 
-                <option>No classes joined</option>}
-            </select>
-          )}
-        </div>
       </div>
       {joinError && <p className="text-sm text-red-500 mt-2 text-right w-full">{joinError}</p>}
     </div>
@@ -140,7 +120,7 @@ function DashboardHeader({ username, myClasses, selectedClass, setSelectedClass,
 }
 
 // Tabs Component
-function ClassTabs({ selectedClass }) {
+function ClassTabs({ selectedClass, onBackToClassSelection }) {
   const [activeTab, setActiveTab] = useState("overview");
 
   const tabs = [
@@ -152,7 +132,7 @@ function ClassTabs({ selectedClass }) {
 
   return (
     <div>
-      <div className="border-b border-gray-200">
+      <div className="border-b border-gray-200 flex justify-between items-center">
         <nav className="-mb-px flex space-x-6" aria-label="Tabs">
           {tabs.map(tab => (
             <button
@@ -168,6 +148,12 @@ function ClassTabs({ selectedClass }) {
             </button>
           ))}
         </nav>
+        <button 
+          onClick={onBackToClassSelection} 
+          className="bg-gray-200 text-gray-700 px-4 py-2 rounded-md hover:bg-gray-300 transition-colors text-sm flex items-center gap-1"
+        >
+          <ChevronLeft size={16} /> Back to Classes
+        </button>
       </div>
       <div className="py-6">
         {activeTab === "overview" && <OverviewTab classId={selectedClass.id} />}
@@ -376,6 +362,28 @@ function ChatTab() {
           <input type="text" value={inputQuery} onChange={(e) => setInputQuery(e.target.value)} placeholder="Ask about materials..." className="flex-1 px-4 py-2 bg-gray-100 border border-gray-300 rounded-full focus:outline-none focus:ring-2 focus:ring-blue-500" disabled={isTyping} />
           <button type="submit" className="bg-blue-600 text-white p-3 rounded-full hover:bg-blue-700 disabled:bg-blue-400 transition-colors" disabled={isTyping || !inputQuery.trim()}><Send size={20} /></button>
         </form>
+      </div>
+    </div>
+  );
+}
+
+// Class Grid Display Component
+function ClassGridDisplay({ myClasses, onSelectClass }) {
+  return (
+    <div className="bg-white p-6 rounded-lg shadow-md border border-gray-200">
+      <h2 className="text-2xl font-bold text-gray-800 mb-6">Your Classes</h2>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {myClasses.map(c => (
+          <div 
+            key={c.id} 
+            className="bg-gray-50 p-6 rounded-lg shadow-sm border border-gray-200 cursor-pointer hover:shadow-md transition-shadow"
+            onClick={() => onSelectClass(c)}
+          >
+            <h3 className="text-xl font-semibold text-gray-800 mb-2">{c.class_name}</h3>
+            <p className="text-gray-600 mb-1">Grade: {c.grade}</p>
+            <p className="text-gray-600 mb-1">Teacher: {c.teacher_name || 'N/A'}</p>
+          </div>
+        ))}
       </div>
     </div>
   );

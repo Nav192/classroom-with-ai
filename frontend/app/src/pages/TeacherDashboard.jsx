@@ -1,39 +1,55 @@
 import { useEffect, useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import { UploadCloud, BookOpen, Plus, Download, LogIn, Users, Trash2, Pencil } from "lucide-react";
+import { UploadCloud, BookOpen, Plus, Download, LogIn, Users, Trash2, Pencil, RefreshCw, ChevronLeft } from "lucide-react";
 import api from "../services/api";
+import CreateClassModal from "../components/CreateClassModal";
 
 // Main Dashboard Component
 export default function TeacherDashboard() {
-  const navigate = useNavigate();
-  const [user, setUser] = useState(null);
-  const [username, setUsername] = useState("");
-  const [myClasses, setMyClasses] = useState([]);
-  const [selectedClass, setSelectedClass] = useState(null);
-  const [loadingClasses, setLoadingClasses] = useState(true);
-  const [classError, setClassError] = useState("");
-
-  useEffect(() => {
+  const initialUser = () => {
     const storedUserId = localStorage.getItem("user_id");
     const storedUserRole = localStorage.getItem("user_role");
-    if (!storedUserId || storedUserRole !== "teacher") {
+    if (storedUserId && storedUserRole === "teacher") {
+      return { id: storedUserId, role: storedUserRole };
+    }
+    return null;
+  };
+  const [user, setUser] = useState(initialUser);
+  const navigate = useNavigate();
+  const [username, setUsername] = useState("");
+  const [myClasses, setMyClasses] = useState([]);
+  const [loadingClasses, setLoadingClasses] = useState(true);
+  const [classError, setClassError] = useState("");
+  const [selectedClassDetails, setSelectedClassDetails] = useState(null);
+  const [isCreateClassModalOpen, setIsCreateClassModalOpen] = useState(false);
+
+  useEffect(() => {
+    if (!user) {
       navigate("/login");
     } else {
-      setUser({ id: storedUserId, role: storedUserRole });
       fetchMyClasses();
-      api.get(`/users/${storedUserId}`).then(res => setUsername(res.data.username));
+      api.get(`/users/${user.id}`).then(res => setUsername(res.data.username));
     }
-  }, [navigate]);
+  }, [user, navigate]);
 
   const fetchMyClasses = async () => {
     setLoadingClasses(true);
     try {
-      const response = await api.get("/classes/me");
-      const classes = response.data || [];
+      const [memberOfResponse, createdByResponse] = await Promise.all([
+        api.get("/classes/me"),
+        api.get("/classes/created-by-me"),
+      ]);
+
+      const memberOfClasses = memberOfResponse.data || [];
+      const createdByClasses = createdByResponse.data || [];
+
+      // Combine and remove duplicates based on class ID
+      const combinedClassesMap = new Map();
+      memberOfClasses.forEach(c => combinedClassesMap.set(c.id, c));
+      createdByClasses.forEach(c => combinedClassesMap.set(c.id, c));
+
+      const classes = Array.from(combinedClassesMap.values());
       setMyClasses(classes);
-      if (classes.length > 0 && !selectedClass) {
-        setSelectedClass(classes[0]);
-      }
     } catch (err) {
       setClassError("Failed to load your classes.");
     } finally {
@@ -47,100 +63,86 @@ export default function TeacherDashboard() {
     <div className="space-y-6">
       <DashboardHeader 
         username={username} 
-        myClasses={myClasses} 
-        selectedClass={selectedClass} 
-        setSelectedClass={setSelectedClass} 
-        loadingClasses={loadingClasses}
         onClassJoined={fetchMyClasses}
+        onCreateClassClick={() => setIsCreateClassModalOpen(true)}
       />
 
       {classError && <p className="text-sm text-red-500 text-center py-2">{classError}</p>}
 
-      {selectedClass ? (
-        <ClassTabs selectedClass={selectedClass} onDataChange={fetchMyClasses} />
-      ) : (
-        <div className="text-center py-20 bg-white rounded-lg shadow-md border border-gray-200">
-          <Users size={48} className="mx-auto text-gray-400 mb-4" />
-          <h2 className="text-xl font-semibold text-gray-700">Welcome, {username}!</h2>
-          <p className="text-gray-500 mt-2">You have not joined any classes yet.</p>
-          <p className="text-gray-500 mt-1">Join a class to get started.</p>
-        </div>
+      <>
+        {loadingClasses ? (
+          <p className="text-center py-20">Loading your classes...</p>
+        ) : selectedClassDetails ? (
+          <ClassTabs selectedClass={selectedClassDetails} onBackToClassSelection={() => setSelectedClassDetails(null)} username={username} />
+        ) : myClasses.length === 0 ? (
+          <div className="text-center py-20 bg-white rounded-lg shadow-md border border-gray-200">
+            <Users size={48} className="mx-auto text-gray-400 mb-4" />
+            <h2 className="text-xl font-semibold text-gray-700">Welcome, {username}!</h2>
+            <p className="text-gray-500 mt-2">You have not joined any classes yet.</p>
+            <p className="text-gray-500 mt-1">Join a class to get started.</p>
+          </div>
+        ) : (
+          <TeacherClassGridDisplay myClasses={myClasses} onSelectClass={setSelectedClassDetails} />
+        )}
+      </>
+
+      {isCreateClassModalOpen && (
+        <CreateClassModal
+          setIsModalOpen={setIsCreateClassModalOpen}
+          onClassCreated={() => {
+            fetchMyClasses();
+            setIsCreateClassModalOpen(false);
+          }}
+        />
       )}
     </div>
   );
 }
 
+// Teacher Class Grid Display Component
+function TeacherClassGridDisplay({ myClasses, onSelectClass }) {
+  return (
+    <div className="bg-white p-6 rounded-lg shadow-md border border-gray-200">
+      <h2 className="text-2xl font-bold text-gray-800 mb-6">Your Classes</h2>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {myClasses.map(c => (
+          <div 
+            key={c.id} 
+            className="bg-gray-50 p-6 rounded-lg shadow-sm border border-gray-200 cursor-pointer hover:shadow-md transition-shadow"
+            onClick={() => onSelectClass(c)}
+          >
+            <h3 className="text-xl font-semibold text-gray-800 mb-2">{c.class_name}</h3>
+            <p className="text-gray-600 mb-1">Grade: {c.grade}</p>
+            <p className="text-gray-600 mb-1">Teacher: {c.teacher_name || 'N/A'}</p>
+            <p className="text-gray-500 text-sm">Code: <span className="font-mono">{c.class_code}</span></p>
+            <p className="text-gray-500 text-sm">Created: {new Date(c.created_at).toLocaleString('en-US', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // Header Component
-function DashboardHeader({ username, myClasses, selectedClass, setSelectedClass, loadingClasses, onClassJoined }) {
-  const [joinCode, setJoinCode] = useState("");
-  const [isJoining, setIsJoining] = useState(false);
-  const [joinError, setJoinError] = useState("");
-
-  const handleJoinClass = async (e) => {
-    e.preventDefault();
-    if (!joinCode) return setJoinError("Please enter a class code.");
-    setIsJoining(true);
-    setJoinError("");
-    try {
-      await api.post("/classes/join", { class_code: joinCode });
-      setJoinCode("");
-      onClassJoined(); // Callback to refresh class list
-    } catch (err) {
-      setJoinError(err.response?.data?.detail || "Failed to join class.");
-    } finally {
-      setIsJoining(false);
-    }
-  };
-
+function DashboardHeader({ username, onClassJoined, onCreateClassClick }) {
   return (
     <div className="bg-white p-6 rounded-lg shadow-md border border-gray-200 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
       <div>
         <h1 className="text-3xl font-bold text-gray-800">Teacher Dashboard</h1>
         <p className="text-gray-500">Welcome back, {username}!</p>
       </div>
-      <div className="flex flex-col md:flex-row items-start md:items-center gap-4 w-full md:w-auto">
-        <form onSubmit={handleJoinClass} className="flex items-center gap-2 w-full md:w-auto">
-          <input 
-            type="text" 
-            value={joinCode} 
-            onChange={(e) => setJoinCode(e.target.value)} 
-            placeholder="Enter Class Code" 
-            className="w-full md:w-48 px-3 py-2 bg-gray-50 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-          <button 
-            type="submit" 
-            disabled={isJoining}
-            className="py-2 px-4 text-sm font-semibold text-white bg-blue-600 rounded-md hover:bg-blue-700 transition-colors flex items-center justify-center gap-2 disabled:bg-blue-400"
-          >
-            <LogIn size={16} />
-            {isJoining ? "Joining..." : "Join Class"}
-          </button>
-        </form>
-        <div className="w-full md:w-64">
-          {loadingClasses ? <p className="text-sm text-gray-500">Loading classes...</p> : (
-            <select 
-              value={selectedClass ? selectedClass.id : ""} 
-              onChange={(e) => {
-                const newClass = myClasses.find(c => c.id === e.target.value);
-                setSelectedClass(newClass);
-              }}
-              className="w-full px-3 py-2 bg-gray-50 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              disabled={myClasses.length === 0}
-            >
-              {myClasses.length > 0 ? 
-                myClasses.map(c => <option key={c.id} value={c.id}>{c.class_name} ({c.class_code})</option>) : 
-                <option>No classes available</option>}
-            </select>
-          )}
-        </div>
-      </div>
-      {joinError && <p className="text-sm text-red-500 mt-2 text-right w-full">{joinError}</p>}
+      <button
+        onClick={onCreateClassClick}
+        className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 flex items-center gap-2 transition-colors text-sm"
+      >
+        <Plus size={16} /> Create Class
+      </button>
     </div>
   );
 }
 
 // Tabs Component
-function ClassTabs({ selectedClass, onDataChange }) {
+function ClassTabs({ selectedClass, onDataChange, username, onBackToClassSelection }) {
   const [activeTab, setActiveTab] = useState("statistics");
 
   const tabs = [
@@ -148,11 +150,12 @@ function ClassTabs({ selectedClass, onDataChange }) {
     { id: "students", label: "Students" },
     { id: "materials", label: "Materials" },
     { id: "quizzes", label: "Quizzes" },
+    { id: "class_management", label: "Class Management" },
   ];
 
   return (
     <div>
-      <div className="border-b border-gray-200">
+      <div className="border-b border-gray-200 flex justify-between items-center">
         <nav className="-mb-px flex space-x-6" aria-label="Tabs">
           {tabs.map(tab => (
             <button
@@ -168,12 +171,19 @@ function ClassTabs({ selectedClass, onDataChange }) {
             </button>
           ))}
         </nav>
+        <button 
+          onClick={onBackToClassSelection} 
+          className="bg-gray-200 text-gray-700 px-4 py-2 rounded-md hover:bg-gray-300 transition-colors text-sm flex items-center gap-1"
+        >
+          <ChevronLeft size={16} /> Back to Classes
+        </button>
       </div>
       <div className="py-6">
         {activeTab === "statistics" && <StatisticsTab classId={selectedClass.id} />}
         {activeTab === "students" && <StudentsTab classId={selectedClass.id} className={selectedClass.class_name} />}
         {activeTab === "materials" && <MaterialsTab classId={selectedClass.id} onDataChange={onDataChange} />}
         {activeTab === "quizzes" && <QuizzesTab classId={selectedClass.id} />}
+        {activeTab === "class_management" && <TeacherClassManagementTab teacherName={username} />}
       </div>
     </div>
   );
@@ -523,6 +533,77 @@ function QuizzesTab({ classId }) {
         ) : <p className="text-gray-500 text-center py-10">No quizzes created for this class yet.</p>
       )}
       {error && <p className="text-red-500 text-sm mt-4">{error}</p>}
+    </div>
+  );
+}
+
+// Teacher Class Management Tab
+function TeacherClassManagementTab() {
+  const [classes, setClasses] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  const fetchClasses = async () => {
+    setLoading(true);
+    try {
+      const response = await api.get("/classes/created-by-me"); // Fetch classes created by the current teacher
+      setClasses(response.data);
+    } catch (err) {
+      setError("Failed to fetch classes.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { fetchClasses(); }, []);
+
+  const handleResetCode = async (classId) => {
+    if (window.confirm("Are you sure you want to reset the class code?")) {
+      try {
+        await api.patch(`/classes/${classId}/reset-code`); // Teacher-specific endpoint
+        fetchClasses();
+      } catch (err) {
+        alert("Failed to reset class code.");
+      }
+    }
+  };
+
+  return (
+    <div className="bg-white p-6 rounded-lg shadow-md border border-gray-200">
+      {loading && <p>Loading classes...</p>}
+      {error && <p className="text-red-500">{error}</p>}
+      {!loading && !error && (
+        <div className="overflow-x-auto">
+          <table className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Class Name</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Grade</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Teacher Name</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Created At</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Class Code</th>
+                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-200">
+              {classes.map((c) => {
+                return (
+                  <tr key={c.id}>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{c.class_name}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{c.grade}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{c.teacher_name || 'N/A'}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{new Date(c.created_at).toLocaleString('en-US', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 font-mono">{c.class_code}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                      <button onClick={() => handleResetCode(c.id)} className="p-2 text-gray-500 hover:text-blue-600" title="Reset Code"><RefreshCw size={18} /></button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }

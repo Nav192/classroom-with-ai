@@ -240,9 +240,6 @@ function ClassManagementTab({ setStats }) {
 
   return (
     <div className="bg-white p-6 rounded-lg shadow-md border border-gray-200">
-      <div className="flex justify-end mb-4">
-        <button onClick={() => setIsModalOpen(true)} className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 flex items-center gap-2 transition-colors text-sm"><Plus size={16} /> Create Class</button>
-      </div>
       {loading && <p>Loading classes...</p>}
       {error && <p className="text-red-500">{error}</p>}
       {!loading && !error && (
@@ -252,6 +249,8 @@ function ClassManagementTab({ setStats }) {
               <tr>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Class Name</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Grade</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Teacher Name</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Created At</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Class Code</th>
                 <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
               </tr>
@@ -261,6 +260,8 @@ function ClassManagementTab({ setStats }) {
                 <tr key={c.id}>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{c.class_name}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{c.grade}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{c.teacher_name || 'N/A'}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{new Date(c.created_at).toLocaleString('en-US', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 font-mono">{c.class_code}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                     <button onClick={() => handleResetCode(c.id)} className="p-2 text-gray-500 hover:text-blue-600" title="Reset Code"><RefreshCw size={18} /></button>
@@ -272,58 +273,6 @@ function ClassManagementTab({ setStats }) {
           </table>
         </div>
       )}
-      {isModalOpen && <CreateClassModal setIsModalOpen={setIsModalOpen} onClassCreated={() => { fetchClasses(); setIsModalOpen(false); }} />}
-    </div>
-  );
-}
-
-// Create Class Modal (extracted component)
-function CreateClassModal({ setIsModalOpen, onClassCreated }) {
-  const [className, setClassName] = useState("");
-  const [grade, setGrade] = useState("10");
-  const [isCreating, setIsCreating] = useState(false);
-  const [error, setError] = useState("");
-
-  const handleCreate = async (e) => {
-    e.preventDefault();
-    setIsCreating(true);
-    setError("");
-    try {
-      await api.post("/classes", { class_name: className, grade: grade });
-      onClassCreated();
-    } catch (err) {
-      setError(err.response?.data?.detail || "Failed to create class.");
-    } finally {
-      setIsCreating(false);
-    }
-  };
-
-  return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50">
-      <div className="bg-white p-8 rounded-lg shadow-2xl w-full max-w-md">
-        <h2 className="text-2xl font-bold mb-6">Create New Class</h2>
-        <form onSubmit={handleCreate} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Class Name</label>
-            <input type="text" value={className} onChange={(e) => setClassName(e.target.value)} placeholder="e.g., Grade 10 Mathematics" className="w-full px-3 py-2 bg-gray-50 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" required />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Grade</label>
-            <select value={grade} onChange={(e) => setGrade(e.target.value)} className="w-full px-3 py-2 bg-gray-50 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" required>
-              <option value="10">10</option>
-              <option value="11">11</option>
-              <option value="12">12</option>
-            </select>
-          </div>
-          {error && <p className="text-sm text-red-500">{error}</p>}
-          <div className="flex justify-end gap-4 pt-4">
-            <button type="button" onClick={() => setIsModalOpen(false)} className="py-2 px-4 text-sm font-medium text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200">Cancel</button>
-            <button type="submit" disabled={isCreating} className="py-2 px-4 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:bg-blue-400">
-              {isCreating ? "Creating..." : "Create Class"}
-            </button>
-          </div>
-        </form>
-      </div>
     </div>
   );
 }

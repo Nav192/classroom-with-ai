@@ -35,6 +35,8 @@ class ClassAdminResponse(BaseModel):
     id: UUID
     class_name: str
     class_code: str
+    grade: str
+    teacher_name: str | None = None
     created_at: str
     created_by: UUID | None
     class Config:
@@ -132,7 +134,7 @@ def delete_user(user_id: UUID, sb: Client = Depends(get_supabase_admin)):
 @router.get("/classes", response_model=List[ClassAdminResponse], summary="List all classes")
 def list_all_classes(sb: Client = Depends(get_supabase_admin)):
     try:
-        response = sb.table("classes").select("*").order("created_at", desc=True).execute()
+        response = sb.table("classes").select("*, grade, teacher_name").order("created_at", desc=True).execute()
         return response.data or []
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
