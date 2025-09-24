@@ -16,6 +16,7 @@ class RegisterRequest(BaseModel):
     email: EmailStr
     password: str
     username: str
+    role: str
 
 
 class LoginResponse(BaseModel):
@@ -53,7 +54,7 @@ def signup(payload: RegisterRequest, sb: Client = Depends(get_supabase)):
             {
                 "email": payload.email,
                 "password": payload.password,
-                "options": {"data": {"role": "student", "username": payload.username}},
+                "options": {"data": {"role": payload.role, "username": payload.username}},
             }
         )
         if res.user is None:

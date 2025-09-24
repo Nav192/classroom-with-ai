@@ -26,6 +26,7 @@ class UserCreate(BaseModel):
     email: EmailStr
     password: str
     role: str
+    username: str
 
 class UserUpdate(BaseModel):
     email: EmailStr | None = None
@@ -56,6 +57,14 @@ def list_users(sb: Client = Depends(get_supabase_admin)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@router.get("/users/count", summary="Get total count of users")
+def get_users_count(sb: Client = Depends(get_supabase_admin)):
+    try:
+        response = sb.table("profiles").select("count").execute()
+        return response.data[0]["count"]
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @router.post("/users", response_model=UserResponse, status_code=status.HTTP_201_CREATED, summary="Create a new user")
 def create_user(user_data: UserCreate, sb: Client = Depends(get_supabase_admin)):
     try:
@@ -63,7 +72,7 @@ def create_user(user_data: UserCreate, sb: Client = Depends(get_supabase_admin))
             "email": user_data.email,
             "password": user_data.password,
             "email_confirm": True,
-            "user_metadata": {"role": user_data.role}
+            "user_metadata": {"role": user_data.role, "username": user_data.username}
         })
         new_user = res.user
         if not new_user:
@@ -122,14 +131,47 @@ def update_user(user_id: UUID, user_data: UserUpdate, sb: Client = Depends(get_s
 @router.delete("/users/{user_id}", status_code=status.HTTP_204_NO_CONTENT, summary="Permanently delete a user")
 def delete_user(user_id: UUID, sb: Client = Depends(get_supabase_admin)):
     try:
-        # Must convert to string for the library
-        sb.auth.admin.delete_user(str(user_id))
+        # 1. Delete from public.profiles table
+        try:
+            profile_delete_res = sb.table("profiles").delete().eq("id", str(user_id)).execute()
+            if not profile_delete_res.data and profile_delete_res.count == 0:
+                print(f"Warning: No profile found or deleted for user_id: {user_id}")
+        except Exception as e:
+            print(f"Error deleting profile for user_id {user_id}: {e}")
+            raise HTTPException(status_code=500, detail=f"Failed to delete user profile: {e}")
+        
+        # 2. Delete from Supabase Auth (auth.users table)
+        try:
+            sb.auth.admin.delete_user(str(user_id))
+            print(f"Auth user {user_id} deleted successfully.")
+        except AuthApiError as e:
+            if "User not found" in e.message:
+                print(f"Auth user {user_id} not found (already deleted or invalid ID), proceeding.")
+            else:
+                print(f"Error deleting auth user {user_id}: {e}")
+                raise HTTPException(status_code=e.status, detail=e.message)
     except AuthApiError as e:
         if "User not found" in e.message:
              raise HTTPException(status_code=404, detail="User not found.")
         raise HTTPException(status_code=e.status, detail=e.message)
 
+# --- Material Management Endpoints ---
+@router.get("/materials/count", summary="Get total count of materials")
+def get_materials_count(sb: Client = Depends(get_supabase_admin)):
+    try:
+        response = sb.table("materials").select("count").execute()
+        return response.data[0]["count"]
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 # --- Class Management Endpoints ---
+@router.get("/classes/count", summary="Get total count of classes")
+def get_classes_count(sb: Client = Depends(get_supabase_admin)):
+    try:
+        response = sb.table("classes").select("count").execute()
+        return response.data[0]["count"]
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/classes", response_model=List[ClassAdminResponse], summary="List all classes")
 def list_all_classes(sb: Client = Depends(get_supabase_admin)):

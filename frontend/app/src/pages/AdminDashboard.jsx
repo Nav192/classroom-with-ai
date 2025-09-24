@@ -19,6 +19,37 @@ export default function AdminDashboard() {
     } else {
       setUser({ id: storedUserId, role: storedUserRole });
       api.get(`/users/${storedUserId}`).then(res => setUsername(res.data.username));
+
+      const fetchMaterialStats = async () => {
+        try {
+          const response = await api.get("/admin/materials/count");
+          setStats(prev => ({ ...prev, materials: response.data }));
+        } catch (err) {
+          console.error("Failed to fetch material stats:", err);
+        }
+      };
+
+      const fetchUserStats = async () => {
+        try {
+          const response = await api.get("/admin/users/count");
+          setStats(prev => ({ ...prev, users: response.data }));
+        } catch (err) {
+          console.error("Failed to fetch user stats:", err);
+        }
+      };
+
+      const fetchClassStats = async () => {
+        try {
+          const response = await api.get("/admin/classes/count");
+          setStats(prev => ({ ...prev, classes: response.data }));
+        } catch (err) {
+          console.error("Failed to fetch class stats:", err);
+        }
+      };
+
+      fetchMaterialStats();
+      fetchUserStats();
+      fetchClassStats();
     }
   }, [navigate]);
 

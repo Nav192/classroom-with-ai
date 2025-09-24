@@ -89,6 +89,18 @@ export default function Signup() {
             />
           </div>
 
+          <div className="relative">
+            <UserPlus className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <select
+              id="role"
+              value={role}
+              onChange={(e) => setRole(e.target.value)}
+              className="w-full pl-10 pr-3 py-2 bg-gray-50 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="student">Student</option>
+              <option value="teacher">Teacher</option>
+            </select>
+          </div>
 
           <button
             disabled={loading}
