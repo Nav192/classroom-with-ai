@@ -16,6 +16,9 @@ export default function QuizBuilder() {
   const [maxAttempts, setMaxAttempts] = useState(2);
   const [quizType, setQuizType] = useState('mcq');
   const [questions, setQuestions] = useState([{ text: '', options: ['', ''], answer: '' }]);
+  const [students, setStudents] = useState([]);
+  const [visibleTo, setVisibleTo] = useState([]);
+  const [studentSearchTerm, setStudentSearchTerm] = useState('');
   
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -26,10 +29,22 @@ export default function QuizBuilder() {
   const [aiError, setAiError] = useState('');
 
   useEffect(() => {
+    const fetchStudents = async (id) => {
+      try {
+        const res = await api.get(`/classes/${id}/students`);
+        setStudents(res.data || []);
+      } catch (err) {
+        console.error("Failed to fetch students for visibility settings", err);
+      }
+    };
+
     const fetchClassName = async (id) => {
+      console.log("fetchClassName called with classId:", id); // DEBUG LOG
       try {
         const res = await api.get(`/classes/${id}`);
+        console.log("fetchClassName API response:", res.data); // DEBUG LOG
         setClassName(res.data.class_name);
+        console.log("className set to:", res.data.class_name); // DEBUG LOG
       } catch (err) {
         console.error("Failed to fetch class name", err);
         setClassName("Unknown Class");
@@ -37,40 +52,45 @@ export default function QuizBuilder() {
     };
 
     if (isEditing) {
-      // Fetch existing quiz data
       setLoading(true);
       api.get(`/quizzes/${quizId}/details`)
         .then(res => {
           const quizData = res.data;
+          console.log("Quiz details fetched:", quizData); // DEBUG LOG
           setTopic(quizData.topic);
           setDuration(quizData.duration_minutes);
-          setMaxAttempts(quizData.max_attempts || 2); // Fallback for safety
+          setMaxAttempts(quizData.max_attempts || 2);
           setQuizType(quizData.type);
-          // Ensure questions have an 'id' for updates
           setQuestions(quizData.questions.map(q => ({ ...q, id: q.id || undefined })));
-          setClassId(quizData.class_id); // Set classId from fetched quiz
-          setClassName(quizData.classes?.name || ''); // Set class name from quiz data
-          if (!quizData.classes?.name) { // Fallback if name not embedded
-            fetchClassName(quizData.class_id);
+          setClassId(quizData.class_id);
+          setVisibleTo(quizData.visible_to || []); // Populate visibility state
+          if (quizData.class_id) {
+            setClassName(quizData.classes?.name || ''); // Set class name from quiz data
+            if (!quizData.classes?.name) { // Fallback if name not embedded
+              console.log("Quiz data missing class name, calling fetchClassName fallback."); // DEBUG LOG
+              fetchClassName(quizData.class_id);
+            }
+            fetchStudents(quizData.class_id);
           }
         })
         .catch(err => {
           setError(err.response?.data?.detail || 'Failed to load quiz for editing.');
-          navigate('/teacher/dashboard'); // Redirect if quiz not found or error
+          navigate('/teacher/dashboard');
         })
         .finally(() => setLoading(false));
     } else {
-      // Get classId from URL search params for new quiz creation
       const params = new URLSearchParams(location.search);
       const id = params.get('classId');
       if (id) {
         setClassId(id);
-        fetchClassName(id); // Fetch and set class name
+        console.log("Create mode: calling fetchClassName with classId from URL:", id); // DEBUG LOG
+        fetchClassName(id); // Fetch class name
+        fetchStudents(id); // Fetch students
       } else {
-        navigate('/teacher/dashboard'); // Redirect if no classId is provided
+        navigate('/teacher/dashboard');
       }
     }
-  }, [location, navigate, quizId, isEditing]);
+  }, [quizId, isEditing, navigate, location.search]);
 
   const handleQuestionChange = (index, field, value) => {
     const newQuestions = [...questions];
@@ -111,6 +131,26 @@ export default function QuizBuilder() {
       setQuestions(newQuestions);
     }
   };
+
+  const handleVisibilityChange = (studentId) => {
+    setVisibleTo(prev => 
+        prev.includes(studentId) 
+            ? prev.filter(id => id !== studentId) 
+            : [...prev, studentId]
+    );
+  };
+
+  const handleSelectAll = () => {
+    setVisibleTo(students.map(s => s.id));
+  };
+
+  const handleDeselectAll = () => {
+    setVisibleTo([]);
+  };
+
+  const filteredStudents = students.filter(s => 
+    (s.username || '').toLowerCase().includes(studentSearchTerm.toLowerCase())
+  );
   
   const handleQuizTypeChange = (e) => {
     const newType = e.target.value;
@@ -141,7 +181,8 @@ export default function QuizBuilder() {
         type: quizType,
         options: q.options,
         answer: q.answer
-      }))
+      })),
+      visible_to: visibleTo
     };
 
     try {
@@ -237,6 +278,47 @@ export default function QuizBuilder() {
             </div>
             {aiError && <p className="text-sm text-destructive">{aiError}</p>}
           </div>
+
+          <fieldset className="space-y-4 border-b border-border pb-6">
+            <h3 className="text-lg font-semibold">Quiz Visibility</h3>
+            <p className="text-sm text-muted-foreground">Select which students can see this quiz. If no students are selected, the quiz will be visible to all students in the class.</p>
+            
+            <div className="flex items-center gap-2">
+                <button type="button" onClick={handleSelectAll} className="bg-blue-100 text-blue-700 px-3 py-1 rounded-md hover:bg-blue-200 text-sm">Select All</button>
+                <button type="button" onClick={handleDeselectAll} className="bg-red-100 text-red-700 px-3 py-1 rounded-md hover:bg-red-200 text-sm">Deselect All</button>
+            </div>
+
+            <div className="space-y-2">
+                <input
+                    type="text"
+                    placeholder="Search students by username..."
+                    value={studentSearchTerm}
+                    onChange={e => setStudentSearchTerm(e.target.value)}
+                    className="w-full px-3 py-2 bg-input border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+                />
+            </div>
+
+            <div className="max-h-60 overflow-y-auto border border-border rounded-md p-2">
+                {filteredStudents.length > 0 ? (
+                    filteredStudents.map(student => (
+                        <div key={student.id} className="flex items-center space-x-2 py-1">
+                            <input
+                                type="checkbox"
+                                id={`student-${student.id}`}
+                                checked={visibleTo.includes(student.id)}
+                                onChange={() => handleVisibilityChange(student.id)}
+                                className="form-checkbox h-4 w-4 text-primary rounded"
+                            />
+                            <label htmlFor={`student-${student.id}`} className="text-sm font-medium text-gray-700 cursor-pointer">
+                                {student.username} ({student.email})
+                            </label>
+                        </div>
+                    ))
+                ) : (
+                    <p className="text-sm text-muted-foreground text-center py-4">No students found or enrolled in this class.</p>
+                )}
+            </div>
+          </fieldset>
 
           {questions.map((q, qIndex) => (
             <fieldset key={q.id || qIndex} className="border-l-4 border-primary pl-4 py-4 space-y-3">

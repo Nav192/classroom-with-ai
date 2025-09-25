@@ -291,8 +291,8 @@ def get_students_in_class(
 
         student_ids = [item['user_id'] for item in member_ids_res.data]
 
-        # Fetch user details from the public.users view
-        users_res = db.table("users").select("id, username, email, role").in_("id", student_ids).execute()
+        # Fetch user details from the public.profiles table
+        users_res = db.table("profiles").select("id, username, email, role").in_("id", student_ids).execute()
         if not users_res.data:
             return []
         users_map = {user["id"]: user for user in users_res.data}

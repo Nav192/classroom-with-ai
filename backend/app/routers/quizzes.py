@@ -22,6 +22,7 @@ class QuizIn(BaseModel):
     duration_minutes: int
     max_attempts: Optional[int] = 2
     questions: List[QuestionIn]
+    visible_to: Optional[List[UUID]] = None
 
 class QuestionOut(QuestionIn):
     id: UUID
@@ -37,11 +38,14 @@ class QuizOut(BaseModel):
     class_id: UUID
     duration_minutes: int
     max_attempts: Optional[int] = None
-    class Config: { "from_attributes": True }
+    is_archived: bool = False
+    class Config:
+        from_attributes = True
 
 class QuizWithQuestions(QuizOut):
     questions: List[QuestionOut]
     classes: Optional[ClassInfo] = None
+    visible_to: Optional[List[UUID]] = None
 
 # --- Endpoints ---
 @router.post("/{class_id}", status_code=status.HTTP_201_CREATED, response_model=QuizOut, dependencies=[Depends(verify_class_membership)])
@@ -80,6 +84,14 @@ def create_quiz(
         if not questions_res.data:
             sb.table("quizzes").delete().eq("id", new_quiz['id']).execute()
             raise HTTPException(status_code=500, detail="Failed to create questions for the quiz.")
+
+        # Handle quiz visibility
+        if payload.visible_to is not None:
+            visibility_to_insert = [
+                {"quiz_id": new_quiz['id'], "user_id": str(student_id)} for student_id in payload.visible_to
+            ]
+            if visibility_to_insert:
+                sb.table("quiz_visibility").insert(visibility_to_insert).execute()
 
         return new_quiz
     except Exception as e:
@@ -165,6 +177,31 @@ def update_quiz(
         if questions_to_delete_ids:
             sb_admin.table("questions").delete().in_("id", list(questions_to_delete_ids)).execute()
 
+        # 4. Sync quiz visibility
+        if payload.visible_to is not None:
+            # Get current visibility settings
+            existing_visibility_res = sb_admin.table("quiz_visibility").select("user_id").eq("quiz_id", str(quiz_id)).execute()
+            existing_user_ids = {UUID(item['user_id']) for item in existing_visibility_res.data}
+            
+            incoming_user_ids = set(payload.visible_to)
+            
+            # Determine who to add and who to remove
+            ids_to_add = incoming_user_ids - existing_user_ids
+            ids_to_remove = existing_user_ids - incoming_user_ids
+            
+            # Add new visibility entries
+            if ids_to_add:
+                sb_admin.table("quiz_visibility").insert([
+                    {"quiz_id": str(quiz_id), "user_id": str(uid)} for uid in ids_to_add
+                ]).execute()
+                
+            # Remove old visibility entries
+            if ids_to_remove:
+                sb_admin.table("quiz_visibility").delete().eq("quiz_id", str(quiz_id)).in_("user_id", [str(uid) for uid in ids_to_remove]).execute()
+        else:
+            # If visible_to is not provided or is null, assume visible to all -> clear all specific visibility rules
+            sb_admin.table("quiz_visibility").delete().eq("quiz_id", str(quiz_id)).execute()
+
         # Fetch the updated quiz to return
         updated_quiz_res = sb_admin.table("quizzes").select("id, topic, type, class_id, duration_minutes, max_attempts").eq("id", str(quiz_id)).single().execute()
         return updated_quiz_res.data
@@ -175,11 +212,46 @@ def update_quiz(
 @router.get("/{class_id}", response_model=List[QuizOut], dependencies=[Depends(verify_class_membership)])
 def list_quizzes(
     class_id: UUID,
+    teacher_view: bool = False,
     sb: Client = Depends(get_supabase),
+    current_user: dict = Depends(get_current_user)
 ):
-    """Lists available quizzes for a specific class. User must be a member."""
-    query = sb.table("quizzes").select("id, topic, type, class_id, duration_minutes").eq("class_id", str(class_id))
-    return query.order("created_at", desc=True).execute().data or []
+    """Lists available quizzes for a specific class based on visibility rules."""
+    if teacher_view:
+        # Fetch quizzes
+        quizzes_res = sb.table("quizzes").select(
+            "id, topic, type, class_id, duration_minutes, max_attempts"
+        ).eq("class_id", str(class_id)).order("created_at", desc=True).execute()
+        
+        quizzes_data = quizzes_res.data or []
+        
+        # Fetch class details for all quizzes in one go to get is_archived status
+        class_ids = list(set([q["class_id"] for q in quizzes_data]))
+        classes_res = sb.table("classes").select("id, is_archived").in_("id", class_ids).execute()
+        class_is_archived_map = {c["id"]: c["is_archived"] for c in classes_res.data}
+
+        # Flatten the result to match QuizOut model
+        formatted_quizzes = []
+        for quiz_data in quizzes_data:
+            formatted_quiz = {
+                "id": quiz_data["id"],
+                "topic": quiz_data["topic"],
+                "type": quiz_data["type"],
+                "class_id": quiz_data["class_id"],
+                "duration_minutes": quiz_data["duration_minutes"],
+                "max_attempts": quiz_data["max_attempts"],
+                "is_archived": class_is_archived_map.get(quiz_data["class_id"], False), # Default to False if not found
+            }
+            formatted_quizzes.append(formatted_quiz)
+        return formatted_quizzes
+    else:
+        # For student view, use RPC function to filter by visibility
+        student_id = current_user.get("id")
+        response = sb.rpc('get_visible_quizzes_for_student', {
+            'class_id_param': str(class_id),
+            'student_id_param': str(student_id)
+        }).execute()
+        return response.data or []
 
 @router.get("/{quiz_id}/details", response_model=QuizWithQuestions)
 def get_quiz_details(
@@ -216,7 +288,11 @@ def get_quiz_details(
 
     questions_res = sb.table("questions").select("*").eq("quiz_id", str(quiz_id)).execute()
     
-    return {**quiz_data, "questions": questions_res.data or []}
+    # Fetch visibility settings
+    visibility_res = sb.table("quiz_visibility").select("user_id").eq("quiz_id", str(quiz_id)).execute()
+    visible_to_ids = [item['user_id'] for item in visibility_res.data]
+
+    return {**quiz_data, "questions": questions_res.data or [], "visible_to": visible_to_ids}
 
 @router.delete("/{quiz_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_quiz(

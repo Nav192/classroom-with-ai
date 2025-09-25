@@ -481,7 +481,8 @@ function QuizzesTab({ classId }) {
   const fetchQuizzes = () => {
     setLoadingQuizzes(true);
     setError("");
-    api.get(`/quizzes/${classId}`)
+    // Fetch all quizzes for the teacher, bypassing student visibility rules
+    api.get(`/quizzes/${classId}?teacher_view=true`)
       .then(res => setQuizzes(res.data || []))
       .catch(() => setError("Failed to load quizzes."))
       .finally(() => setLoadingQuizzes(false));
