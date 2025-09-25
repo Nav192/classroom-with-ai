@@ -3,7 +3,6 @@ import { useNavigate, Link } from "react-router-dom";
 import { BookCopy, Send, User, Bot, PlayCircle, LogIn, Users, Download, Eye, ChevronDown, PlusCircle, ChevronLeft } from "lucide-react";
 import api from "../services/api";
 
-// Main Dashboard Component
 export default function StudentDashboard() {
   const navigate = useNavigate();
   const [user, setUser] = useState(null);
@@ -11,7 +10,8 @@ export default function StudentDashboard() {
   const [myClasses, setMyClasses] = useState([]);
   const [loadingClasses, setLoadingClasses] = useState(true);
   const [classError, setClassError] = useState("");
-  const [selectedClassDetails, setSelectedClassDetails] = useState(null); // New state for selected class
+  const [selectedClassDetails, setSelectedClassDetails] = useState(null);
+  const [activeGridTab, setActiveGridTab] = useState('active'); // State for the grid tabs
 
   useEffect(() => {
     const storedUserId = localStorage.getItem("user_id");
@@ -20,15 +20,20 @@ export default function StudentDashboard() {
       navigate("/login");
     } else {
       setUser({ id: storedUserId, role: storedUserRole });
-      fetchMyClasses();
       api.get(`/users/${storedUserId}`).then(res => setUsername(res.data.username));
     }
   }, [navigate]);
 
+  useEffect(() => {
+    if (user) {
+      fetchMyClasses();
+    }
+  }, [user]); // Fetch classes once when user is loaded
+
   const fetchMyClasses = async () => {
     setLoadingClasses(true);
     try {
-      const response = await api.get("/classes/me");
+      const response = await api.get(`/classes/me?show_archived=true`);
       const classes = response.data || [];
       setMyClasses(classes);
     } catch (err) {
@@ -37,6 +42,9 @@ export default function StudentDashboard() {
       setLoadingClasses(false);
     }
   };
+
+  const activeClasses = myClasses.filter(c => !c.is_archived);
+  const archivedClasses = myClasses.filter(c => c.is_archived);
 
   if (!user) return <div className="p-6 text-center">Loading user profile...</div>;
 
@@ -61,7 +69,29 @@ export default function StudentDashboard() {
           <p className="text-gray-500 mt-1">Join a class to get started.</p>
         </div>
       ) : (
-        <ClassGridDisplay myClasses={myClasses} onSelectClass={setSelectedClassDetails} />
+        <div className="bg-white p-6 rounded-lg shadow-md border border-gray-200">
+            <div className="border-b border-gray-200 mb-6">
+              <nav className="-mb-px flex space-x-6" aria-label="Class Grid Tabs">
+                <button 
+                  onClick={() => setActiveGridTab('active')} 
+                  className={`${activeGridTab === 'active' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'} whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm`}
+                >
+                  Active Classes
+                </button>
+                <button 
+                  onClick={() => setActiveGridTab('archived')} 
+                  className={`${activeGridTab === 'archived' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'} whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm`}
+                >
+                  Archived Classes
+                </button>
+              </nav>
+            </div>
+            {activeGridTab === 'active' ? (
+              <ClassGridDisplay myClasses={activeClasses} onSelectClass={setSelectedClassDetails} />
+            ) : (
+              <ClassGridDisplay myClasses={archivedClasses} onSelectClass={setSelectedClassDetails} />
+            )}
+          </div>
       )}
     </div>
   );
@@ -370,21 +400,26 @@ function ChatTab() {
 // Class Grid Display Component
 function ClassGridDisplay({ myClasses, onSelectClass }) {
   return (
-    <div className="bg-white p-6 rounded-lg shadow-md border border-gray-200">
-      <h2 className="text-2xl font-bold text-gray-800 mb-6">Your Classes</h2>
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {myClasses.map(c => (
-          <div 
-            key={c.id} 
-            className="bg-gray-50 p-6 rounded-lg shadow-sm border border-gray-200 cursor-pointer hover:shadow-md transition-shadow"
-            onClick={() => onSelectClass(c)}
-          >
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      {myClasses.length > 0 ? myClasses.map(c => (
+        <div
+          key={c.id}
+          className={`p-6 rounded-lg shadow-sm border border-gray-200 transition-all cursor-pointer hover:shadow-md ${
+            c.is_archived ? 'bg-gray-100 opacity-75' : 'bg-gray-50'
+          }`}
+          onClick={() => onSelectClass(c)}
+        >
+          <div className="flex justify-between items-start">
             <h3 className="text-xl font-semibold text-gray-800 mb-2">{c.class_name}</h3>
-            <p className="text-gray-600 mb-1">Grade: {c.grade}</p>
-            <p className="text-gray-600 mb-1">Teacher: {c.teacher_name || 'N/A'}</p>
+            {c.is_archived && <span className="px-2 py-1 text-xs font-semibold rounded-full bg-yellow-200 text-yellow-800">Archived</span>}
           </div>
-        ))}
-      </div>
+          <p className="text-gray-600 mb-1">Grade: {c.grade}</p>
+          <p className="text-gray-600 mb-1">Teacher: {c.teacher_name || 'N/A'}</p>
+          <p className="text-gray-500 text-sm">Created: {new Date(c.created_at).toLocaleString('en-US', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
+        </div>
+      )) : (
+        <p className="text-gray-500 col-span-full text-center">No classes to display in this view.</p>
+      )}
     </div>
   );
 }

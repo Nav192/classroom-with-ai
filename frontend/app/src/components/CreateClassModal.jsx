@@ -18,7 +18,8 @@ export default function CreateClassModal({ setIsModalOpen, onClassCreated }) {
       await api.post("/classes", { class_name: className, grade: grade, teacher_name: teacherName });
       onClassCreated();
     } catch (err) {
-      setError(err.response?.data?.detail || "Failed to create class.");
+      console.error("Error creating class:", err.response?.data || err.message);
+      setError(err.response?.data?.detail || err.message || "Failed to create class.");
     } finally {
       setIsCreating(false);
     }

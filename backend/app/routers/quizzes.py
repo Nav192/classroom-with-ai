@@ -3,7 +3,7 @@ from pydantic import BaseModel
 from typing import List, Optional
 from uuid import UUID
 
-from ..dependencies import get_supabase, get_current_user, get_current_teacher_user, verify_class_membership
+from ..dependencies import get_supabase, get_supabase_admin, get_current_user, get_current_teacher_user, verify_class_membership
 from supabase import Client
 
 router = APIRouter()
@@ -36,6 +36,7 @@ class QuizOut(BaseModel):
     type: str
     class_id: UUID
     duration_minutes: int
+    max_attempts: Optional[int] = None
     class Config: { "from_attributes": True }
 
 class QuizWithQuestions(QuizOut):
@@ -47,7 +48,7 @@ class QuizWithQuestions(QuizOut):
 def create_quiz(
     class_id: UUID,
     payload: QuizIn,
-    sb: Client = Depends(get_supabase),
+    sb: Client = Depends(get_supabase_admin),
     current_teacher: dict = Depends(get_current_teacher_user),
 ):
     teacher_id = current_teacher.get("id")
@@ -88,7 +89,7 @@ def create_quiz(
 def update_quiz(
     quiz_id: UUID,
     payload: QuizIn,
-    sb: Client = Depends(get_supabase),
+    sb_admin: Client = Depends(get_supabase_admin),
     current_teacher: dict = Depends(get_current_teacher_user),
 ):
     """Updates an existing quiz and its questions. Teacher must be the creator."""
@@ -96,22 +97,21 @@ def update_quiz(
     print(payload.model_dump_json(indent=2)) # Debugging: Print incoming payload
 
     # 1. Verify quiz exists and was created by the current teacher
-    quiz_res = sb.table("quizzes").select("id, user_id, class_id").eq("id", str(quiz_id)).single().execute()
+    quiz_res = sb_admin.table("quizzes").select("id, user_id, class_id").eq("id", str(quiz_id)).single().execute()
     if not quiz_res.data:
         raise HTTPException(status_code=404, detail="Quiz not found.")
     
     existing_quiz = quiz_res.data
-    if str(existing_quiz["user_id"]) != str(teacher_id):
-        raise HTTPException(status_code=403, detail="You are not authorized to update this quiz.")
-
-    # 2. Verify teacher is a member of the class this quiz belongs to
+    quiz_creator_id = existing_quiz["user_id"]
     class_id = existing_quiz["class_id"]
-    member_res = sb.table("class_members").select("id").eq("class_id", class_id).eq("user_id", teacher_id).single().execute()
-    if not member_res.data:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="You are not a member of the class this quiz belongs to."
-        )
+
+    # Check if teacher is a member of the class OR the creator of the quiz OR the creator of the class
+    is_member = sb_admin.table("class_members").select("id").eq("class_id", class_id).eq("user_id", teacher_id).execute().data
+    is_class_creator = sb_admin.table("classes").select("id").eq("id", class_id).eq("created_by", teacher_id).execute().data
+    is_quiz_creator = (str(teacher_id) == str(quiz_creator_id))
+
+    if not is_member and not is_class_creator and not is_quiz_creator:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You are not authorized to update this quiz.")
 
     if any(q.type != payload.type for q in payload.questions):
         raise HTTPException(status_code=400, detail="All question types must match the quiz type.")
@@ -124,10 +124,10 @@ def update_quiz(
             "duration_minutes": payload.duration_minutes,
             "max_attempts": payload.max_attempts,
         }
-        sb.table("quizzes").update(updated_quiz_data).eq("id", str(quiz_id)).execute()
+        sb_admin.table("quizzes").update(updated_quiz_data).eq("id", str(quiz_id)).execute()
 
         # 3. Handle questions
-        existing_questions_res = sb.table("questions").select("id").eq("quiz_id", str(quiz_id)).execute()
+        existing_questions_res = sb_admin.table("questions").select("id").eq("quiz_id", str(quiz_id)).execute()
         existing_question_ids = {q["id"] for q in existing_questions_res.data or []}
         
         questions_to_insert = []
@@ -156,17 +156,17 @@ def update_quiz(
         
         # Perform updates and inserts
         if questions_to_update:
-            sb.table("questions").upsert(questions_to_update, on_conflict="id").execute()
+            sb_admin.table("questions").upsert(questions_to_update, on_conflict="id").execute()
         if questions_to_insert:
-            sb.table("questions").insert(questions_to_insert).execute()
+            sb_admin.table("questions").insert(questions_to_insert).execute()
 
         # Identify and delete removed questions
         questions_to_delete_ids = existing_question_ids - incoming_question_ids
         if questions_to_delete_ids:
-            sb.table("questions").delete().in_("id", list(questions_to_delete_ids)).execute()
+            sb_admin.table("questions").delete().in_("id", list(questions_to_delete_ids)).execute()
 
         # Fetch the updated quiz to return
-        updated_quiz_res = sb.table("quizzes").select("id, topic, type, class_id, duration_minutes").eq("id", str(quiz_id)).single().execute()
+        updated_quiz_res = sb_admin.table("quizzes").select("id, topic, type, class_id, duration_minutes, max_attempts").eq("id", str(quiz_id)).single().execute()
         return updated_quiz_res.data
 
     except Exception as e:
@@ -202,12 +202,17 @@ def get_quiz_details(
             # Alias class_name to name to match the frontend expectation
             quiz_data["classes"] = {"name": class_res.data.get("class_name")}
 
-    # Verify user is a member of the class this quiz belongs to
+    # Verify user is a member of the class OR the creator of the quiz OR the creator of the class
     quiz_class_id = quiz_data['class_id']
     user_id = current_user.get('id')
-    member_res = sb.table("class_members").select("id").eq("class_id", quiz_class_id).eq("user_id", user_id).single().execute()
-    if not member_res.data:
-        raise HTTPException(status_code=403, detail="You are not a member of the class this quiz belongs to.")
+    quiz_creator_id = quiz_data.get('user_id') # Assuming quiz_data contains user_id of creator
+
+    is_member = sb.table("class_members").select("id").eq("class_id", quiz_class_id).eq("user_id", user_id).execute().data
+    is_class_creator = sb.table("classes").select("id").eq("id", quiz_class_id).eq("created_by", user_id).execute().data
+    is_quiz_creator = (str(user_id) == str(quiz_creator_id))
+
+    if not is_member and not is_class_creator and not is_quiz_creator:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You are not authorized to view this quiz.")
 
     questions_res = sb.table("questions").select("*").eq("quiz_id", str(quiz_id)).execute()
     

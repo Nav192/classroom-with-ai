@@ -31,6 +31,7 @@ class UserCreate(BaseModel):
 class UserUpdate(BaseModel):
     email: EmailStr | None = None
     role: str | None = None
+    username: str | None = None
 
 class ClassAdminResponse(BaseModel):
     id: UUID
@@ -82,28 +83,47 @@ def create_user(user_data: UserCreate, sb: Client = Depends(get_supabase_admin))
     except AuthApiError as e:
         raise HTTPException(status_code=e.status, detail=e.message)
 
-@router.put("/users/{user_id}", response_model=UserResponse, summary="Update a user's role or email")
+@router.put("/users/{user_id}", response_model=UserResponse, summary="Update a user's role, email, or username")
 def update_user(user_id: UUID, user_data: UserUpdate, sb: Client = Depends(get_supabase_admin)):
     print(f"Attempting to update user {user_id} with data: {user_data.model_dump_json()}")
+
+    # Validate if the new email is already taken by another user
+    if user_data.email:
+        existing_user_res = sb.table("profiles").select("id").eq("email", user_data.email).neq("id", str(user_id)).execute()
+        if existing_user_res.data:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"Email ''{user_data.email}'' is already in use by another account."
+            )
+
     try:
-        # 1. Update Supabase Auth
+        # 1. Prepare and execute Supabase Auth update
         auth_updates = {}
         if user_data.email:
             auth_updates["email"] = user_data.email
+        
+        meta_updates = {}
         if user_data.role:
-            auth_updates["user_metadata"] = {"role": user_data.role}
+            meta_updates["role"] = user_data.role
+        if user_data.username:
+            meta_updates["username"] = user_data.username
+        
+        if meta_updates:
+            auth_updates["user_metadata"] = meta_updates
 
         if auth_updates:
             print("Updating Supabase Auth...")
             update_res = sb.auth.admin.update_user_by_id(str(user_id), auth_updates)
             print(f"Auth update response: {update_res}")
 
-        # 2. Update public.profiles table
+        # 2. Prepare and execute public.profiles table update
         profile_updates = {}
         if user_data.role:
             profile_updates["role"] = user_data.role
         if user_data.email:
             profile_updates["email"] = user_data.email
+        if user_data.username:
+            profile_updates["username"] = user_data.username
         
         if profile_updates:
             print("Updating public.profiles table...")
@@ -123,7 +143,6 @@ def update_user(user_id: UUID, user_data: UserUpdate, sb: Client = Depends(get_s
         raise HTTPException(status_code=e.status, detail=e.message)
     except Exception as e:
         print(f"An unexpected error occurred in update_user: {e}")
-        # Check if it's a PostgrestError for more details
         if hasattr(e, 'message'):
              raise HTTPException(status_code=500, detail=e.message)
         raise HTTPException(status_code=500, detail=f"An unexpected error occurred: {str(e)}")

@@ -10,6 +10,7 @@ export default function QuizBuilder() {
   const isEditing = !!quizId; // True if quizId exists, false otherwise
 
   const [classId, setClassId] = useState('');
+  const [className, setClassName] = useState('');
   const [topic, setTopic] = useState('');
   const [duration, setDuration] = useState(30);
   const [maxAttempts, setMaxAttempts] = useState(2);
@@ -25,6 +26,16 @@ export default function QuizBuilder() {
   const [aiError, setAiError] = useState('');
 
   useEffect(() => {
+    const fetchClassName = async (id) => {
+      try {
+        const res = await api.get(`/classes/${id}`);
+        setClassName(res.data.class_name);
+      } catch (err) {
+        console.error("Failed to fetch class name", err);
+        setClassName("Unknown Class");
+      }
+    };
+
     if (isEditing) {
       // Fetch existing quiz data
       setLoading(true);
@@ -33,11 +44,15 @@ export default function QuizBuilder() {
           const quizData = res.data;
           setTopic(quizData.topic);
           setDuration(quizData.duration_minutes);
-          setMaxAttempts(quizData.max_attempts);
+          setMaxAttempts(quizData.max_attempts || 2); // Fallback for safety
           setQuizType(quizData.type);
           // Ensure questions have an 'id' for updates
           setQuestions(quizData.questions.map(q => ({ ...q, id: q.id || undefined })));
           setClassId(quizData.class_id); // Set classId from fetched quiz
+          setClassName(quizData.classes?.name || ''); // Set class name from quiz data
+          if (!quizData.classes?.name) { // Fallback if name not embedded
+            fetchClassName(quizData.class_id);
+          }
         })
         .catch(err => {
           setError(err.response?.data?.detail || 'Failed to load quiz for editing.');
@@ -50,6 +65,7 @@ export default function QuizBuilder() {
       const id = params.get('classId');
       if (id) {
         setClassId(id);
+        fetchClassName(id); // Fetch and set class name
       } else {
         navigate('/teacher/dashboard'); // Redirect if no classId is provided
       }
@@ -187,8 +203,8 @@ export default function QuizBuilder() {
                     <input type="text" id="topic" value={topic} onChange={e => setTopic(e.target.value)} required className="w-full px-3 py-2 bg-input border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-primary"/>
                 </div>
                 <div className="space-y-2 bg-muted/50 p-3 rounded-md">
-                    <label className="text-sm font-medium flex items-center gap-2"><Info size={16}/> Class ID</label>
-                    <p className="font-mono text-sm text-muted-foreground">{classId || 'Loading...'}</p>
+                    <label className="text-sm font-medium flex items-center gap-2"><Info size={16}/> Class</label>
+                    <p className="font-semibold text-sm text-muted-foreground">{className || 'Loading...'}</p>
                 </div>
                 <div className="space-y-2">
                     <label htmlFor="duration" className="text-sm font-medium">Duration (minutes)</label>

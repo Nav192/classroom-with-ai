@@ -4,7 +4,7 @@ from typing import List, Optional
 from uuid import UUID
 from datetime import datetime
 
-from ..dependencies import get_supabase, get_current_user, get_current_student_user, get_current_teacher_user, verify_class_membership
+from ..dependencies import get_supabase, get_supabase_admin, get_current_user, get_current_student_user, get_current_teacher_user, verify_class_membership
 from supabase import Client
 
 router = APIRouter()
@@ -70,14 +70,14 @@ class CheatingLogRequest(BaseModel):
 @router.post("/submit", response_model=ResultOut, status_code=status.HTTP_201_CREATED)
 async def submit_quiz(
     payload: SubmitQuizRequest,
-    sb: Client = Depends(get_supabase),
+    sb_admin: Client = Depends(get_supabase_admin),
     current_student: dict = Depends(get_current_student_user),
 ):
     """Submits a quiz, auto-grades, and saves the result and individual answers."""
     student_id = current_student.get("id")
 
     # 1. Verify quiz exists, get its class, and check for student membership
-    quiz_res = sb.table("quizzes").select("class_id, type, max_attempts").eq("id", payload.quiz_id).single().execute()
+    quiz_res = sb_admin.table("quizzes").select("class_id, type, max_attempts").eq("id", payload.quiz_id).single().execute()
     if not quiz_res.data:
         raise HTTPException(status_code=404, detail="Quiz not found.")
     
@@ -85,12 +85,12 @@ async def submit_quiz(
     quiz_type = quiz_res.data['type']
     max_attempts = quiz_res.data['max_attempts']
 
-    member_res = sb.table("class_members").select("id").eq("class_id", quiz_class_id).eq("user_id", student_id).single().execute()
+    member_res = sb_admin.table("class_members").select("id").eq("class_id", quiz_class_id).eq("user_id", student_id).single().execute()
     if not member_res.data:
         raise HTTPException(status_code=403, detail="You are not enrolled in the class for this quiz.")
 
     # 2. Check attempt limits
-    previous_attempts_res = sb.table("results").select("attempt_number").eq("quiz_id", payload.quiz_id).eq("user_id", student_id).order("attempt_number", desc=True).limit(1).execute()
+    previous_attempts_res = sb_admin.table("results").select("attempt_number").eq("quiz_id", payload.quiz_id).eq("user_id", student_id).order("attempt_number", desc=True).limit(1).execute()
     current_attempt_number = 1
     if previous_attempts_res.data:
         last_attempt = previous_attempts_res.data[0]['attempt_number']
@@ -99,11 +99,11 @@ async def submit_quiz(
             raise HTTPException(status_code=403, detail=f"Maximum attempt limit ({max_attempts}) for this quiz has been reached.")
 
     # 3. Fetch all questions for grading
-    questions_res = sb.table("questions").select("id, type, answer").eq("quiz_id", payload.quiz_id).execute()
+    questions_res = sb_admin.table("questions").select("id, type, answer").eq("quiz_id", payload.quiz_id).execute()
     quiz_questions = {str(q['id']): q for q in questions_res.data}
 
     score = 0
-    total_questions = len(payload.answers)
+    total_questions = len(quiz_questions)
     answers_to_insert = []
 
     for submitted_answer in payload.answers:
@@ -127,7 +127,7 @@ async def submit_quiz(
 
     # 4. Insert the main result record
     try:
-        result_insert_res = sb.table("results").insert({
+        result_insert_res = sb_admin.table("results").insert({
             "quiz_id": str(payload.quiz_id),
             "user_id": str(student_id),
             "score": score,
@@ -151,7 +151,10 @@ async def submit_quiz(
     for answer_data in answers_to_insert:
         answer_data['result_id'] = str(result_id)
     
-    sb.table("quiz_answers").insert(answers_to_insert).execute()
+    if answers_to_insert:
+        sb_admin.table("quiz_answers").insert(answers_to_insert).execute()
+    else:
+        print("No answers to insert for quiz result.")
 
     return new_result
 

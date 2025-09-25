@@ -30,6 +30,7 @@ create table if not exists public.classes (
     class_name text not null,
     class_code text unique not null,
     grade text,
+    teacher_name text,
     created_at timestamp with time zone default now()
 );
 
@@ -116,6 +117,8 @@ create table if not exists public.ai_interactions (
     created_at timestamp with time zone default now()
 );
 
+alter table public.profiles disable row level security;
+
 -- Function to create a profile for a new user
 create or replace function public.create_user_profile()
 returns trigger
@@ -127,7 +130,7 @@ begin
   values (
     new.id,
     new.email,
-    new.raw_user_meta_data->>'role',
+    coalesce(new.raw_user_meta_data->>'role', 'student'), -- Use 'student' as default if role is not provided
     coalesce(new.raw_user_meta_data->>'username', split_part(new.email, '@', 1))
   );
   return new;
@@ -164,39 +167,24 @@ as $$
   limit match_count;
 $$;
 
--- RLS Policies for Profiles
-alter table public.profiles enable row level security;
+-- RLS Policies for Classes
+alter table public.classes enable row level security;
 
-create policy "Allow users to view their own profile"
-on public.profiles for select
-using (auth.uid() = id);
+create policy "Allow teachers to view classes they created"
+on public.classes for select
+using (auth.uid() = created_by);
 
-create policy "Allow admins to manage all profiles"
-on public.profiles for all
-using ((select role from public.profiles where id = auth.uid()) = 'admin')
-with check ((select role from public.profiles where id = auth.uid()) = 'admin');
+create policy "Allow members to view their classes"
+on public.classes for select
+using (id in (select class_id from public.class_members where user_id = auth.uid()));
 
--- RLS Policies for Materials
-alter table public.materials enable row level security;
+-- RLS Policies for Class Members
+alter table public.class_members enable row level security;
 
-DROP POLICY IF EXISTS "Allow authenticated read access to materials" ON public.materials;
-create policy "Allow authenticated read access to materials"
-on public.materials for select
-to authenticated
-using (true);
-
-DROP POLICY IF EXISTS "Allow teachers or admins to insert materials" ON public.materials;
-create policy "Allow teachers or admins to insert materials"
-on public.materials for insert
-to authenticated
-with check ((select role from public.profiles where id = auth.uid()) in ('teacher', 'admin'));
-
-DROP POLICY IF EXISTS "Allow teachers to update their own materials" ON public.materials;
-create policy "Allow teachers to update their own materials"
-on public.materials for update
+create policy "Allow users to view their own class memberships"
+on public.class_members for select
 using (auth.uid() = user_id);
 
-DROP POLICY IF EXISTS "Allow teachers to delete their own materials" ON public.materials;
-create policy "Allow teachers to delete their own materials"
-on public.materials for delete
-using (auth.uid() = user_id);
+create policy "Allow users to join a class"
+on public.class_members for insert
+with check (auth.uid() = user_id);

@@ -35,10 +35,16 @@ export default function UserModal({ isOpen, onClose, onSubmit, user }) {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    const dataToSubmit = { ...formData };
-    if (isEditMode && !dataToSubmit.password) {
-      delete dataToSubmit.password;
-    }
+    // For editing, we only want to submit username, email, and role.
+    // For creation, we submit everything including the password.
+    const dataToSubmit = isEditMode
+      ? {
+          username: formData.username,
+          email: formData.email,
+          role: formData.role,
+        }
+      : { ...formData };
+
     onSubmit(dataToSubmit);
   };
 

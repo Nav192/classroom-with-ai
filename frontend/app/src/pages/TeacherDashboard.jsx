@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import { UploadCloud, BookOpen, Plus, Download, LogIn, Users, Trash2, Pencil, RefreshCw, ChevronLeft } from "lucide-react";
+import { UploadCloud, BookOpen, Plus, Download, LogIn, Users, Trash2, Pencil, RefreshCw, ChevronLeft, Archive, ArchiveRestore } from "lucide-react";
 import api from "../services/api";
 import CreateClassModal from "../components/CreateClassModal";
 
@@ -22,6 +22,7 @@ export default function TeacherDashboard() {
   const [classError, setClassError] = useState("");
   const [selectedClassDetails, setSelectedClassDetails] = useState(null);
   const [isCreateClassModalOpen, setIsCreateClassModalOpen] = useState(false);
+  const [activeGridTab, setActiveGridTab] = useState('active'); // State for the grid tabs
 
   useEffect(() => {
     if (!user) {
@@ -36,9 +37,12 @@ export default function TeacherDashboard() {
     setLoadingClasses(true);
     try {
       const [memberOfResponse, createdByResponse] = await Promise.all([
-        api.get("/classes/me"),
-        api.get("/classes/created-by-me"),
+        api.get(`/classes/me?show_archived=true&_=${new Date().getTime()}`),
+        api.get(`/classes/created-by-me?show_archived=true&_=${new Date().getTime()}`),
       ]);
+
+      console.log("API Response - classes/me:", memberOfResponse.data);
+      console.log("API Response - classes/created-by-me:", createdByResponse.data);
 
       const memberOfClasses = memberOfResponse.data || [];
       const createdByClasses = createdByResponse.data || [];
@@ -49,6 +53,7 @@ export default function TeacherDashboard() {
       createdByClasses.forEach(c => combinedClassesMap.set(c.id, c));
 
       const classes = Array.from(combinedClassesMap.values());
+      console.log("Combined and unique classes:", classes);
       setMyClasses(classes);
     } catch (err) {
       setClassError("Failed to load your classes.");
@@ -56,6 +61,9 @@ export default function TeacherDashboard() {
       setLoadingClasses(false);
     }
   };
+
+  const activeClasses = myClasses.filter(c => !c.is_archived);
+  const archivedClasses = myClasses.filter(c => c.is_archived);
 
   if (!user) return <div className="p-6 text-center">Loading user profile...</div>;
 
@@ -82,7 +90,29 @@ export default function TeacherDashboard() {
             <p className="text-gray-500 mt-1">Join a class to get started.</p>
           </div>
         ) : (
-          <TeacherClassGridDisplay myClasses={myClasses} onSelectClass={setSelectedClassDetails} />
+          <div className="bg-white p-6 rounded-lg shadow-md border border-gray-200">
+            <div className="border-b border-gray-200 mb-6">
+              <nav className="-mb-px flex space-x-6" aria-label="Class Grid Tabs">
+                <button 
+                  onClick={() => setActiveGridTab('active')} 
+                  className={`${activeGridTab === 'active' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'} whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm`}
+                >
+                  Active Classes
+                </button>
+                <button 
+                  onClick={() => setActiveGridTab('archived')} 
+                  className={`${activeGridTab === 'archived' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'} whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm`}
+                >
+                  Archived Classes
+                </button>
+              </nav>
+            </div>
+            {activeGridTab === 'active' ? (
+              <TeacherClassGridDisplay myClasses={activeClasses} onSelectClass={setSelectedClassDetails} />
+            ) : (
+              <TeacherClassGridDisplay myClasses={archivedClasses} onSelectClass={setSelectedClassDetails} />
+            )}
+          </div>
         )}
       </>
 
@@ -102,23 +132,27 @@ export default function TeacherDashboard() {
 // Teacher Class Grid Display Component
 function TeacherClassGridDisplay({ myClasses, onSelectClass }) {
   return (
-    <div className="bg-white p-6 rounded-lg shadow-md border border-gray-200">
-      <h2 className="text-2xl font-bold text-gray-800 mb-6">Your Classes</h2>
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {myClasses.map(c => (
-          <div 
-            key={c.id} 
-            className="bg-gray-50 p-6 rounded-lg shadow-sm border border-gray-200 cursor-pointer hover:shadow-md transition-shadow"
-            onClick={() => onSelectClass(c)}
-          >
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      {myClasses.length > 0 ? myClasses.map(c => (
+        <div
+          key={c.id}
+          className={`p-6 rounded-lg shadow-sm border border-gray-200 transition-all cursor-pointer hover:shadow-md ${
+            c.is_archived ? 'bg-gray-100 opacity-75' : 'bg-gray-50'
+          }`}
+          onClick={() => onSelectClass(c)}
+        >
+          <div className="flex justify-between items-start">
             <h3 className="text-xl font-semibold text-gray-800 mb-2">{c.class_name}</h3>
-            <p className="text-gray-600 mb-1">Grade: {c.grade}</p>
-            <p className="text-gray-600 mb-1">Teacher: {c.teacher_name || 'N/A'}</p>
-            <p className="text-gray-500 text-sm">Code: <span className="font-mono">{c.class_code}</span></p>
-            <p className="text-gray-500 text-sm">Created: {new Date(c.created_at).toLocaleString('en-US', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
+            {c.is_archived && <span className="px-2 py-1 text-xs font-semibold rounded-full bg-yellow-200 text-yellow-800">Archived</span>}
           </div>
-        ))}
-      </div>
+          <p className="text-gray-600 mb-1">Grade: {c.grade}</p>
+          <p className="text-gray-600 mb-1">Teacher: {c.teacher_name || 'N/A'}</p>
+          <p className="text-gray-500 text-sm">Code: <span className="font-mono">{c.class_code}</span></p>
+          <p className="text-gray-500 text-sm">Created: {new Date(c.created_at).toLocaleString('en-US', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
+        </div>
+      )) : (
+        <p className="text-gray-500 col-span-full text-center">No classes to display in this view.</p>
+      )}
     </div>
   );
 }
@@ -418,8 +452,15 @@ function UploadMaterialModal({ classId, setIsModalOpen, onMaterialUploaded }) {
           {error && <p className="text-sm text-red-500">{error}</p>}
           <div className="flex justify-end gap-4 pt-4">
             <button type="button" onClick={() => setIsModalOpen(false)} className="py-2 px-4 text-sm font-medium text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200">Cancel</button>
-            <button type="submit" disabled={uploading} className="py-2 px-4 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:bg-blue-400">
-              {uploading ? "Uploading..." : "Upload"}
+            <button type="submit" disabled={uploading} className="py-2 px-4 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:bg-blue-400 flex items-center justify-center gap-2">
+              {uploading ? (
+                <>
+                  <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-white"></div>
+                  <span>Uploading...</span>
+                </>
+              ) : (
+                <span>Upload</span>
+              )}
             </button>
           </div>
         </form>
@@ -539,15 +580,17 @@ function QuizzesTab({ classId }) {
 
 // Teacher Class Management Tab
 function TeacherClassManagementTab() {
-  const [classes, setClasses] = useState([]);
+  const [allClasses, setAllClasses] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [activeSubTab, setActiveSubTab] = useState('active'); // 'active' or 'archived'
 
   const fetchClasses = async () => {
     setLoading(true);
     try {
-      const response = await api.get("/classes/created-by-me"); // Fetch classes created by the current teacher
-      setClasses(response.data);
+      // Fetch all classes including archived ones
+      const response = await api.get(`/classes/created-by-me?show_archived=true`);
+      setAllClasses(response.data || []);
     } catch (err) {
       setError("Failed to fetch classes.");
     } finally {
@@ -555,12 +598,14 @@ function TeacherClassManagementTab() {
     }
   };
 
-  useEffect(() => { fetchClasses(); }, []);
+  useEffect(() => {
+    fetchClasses();
+  }, []);
 
   const handleResetCode = async (classId) => {
     if (window.confirm("Are you sure you want to reset the class code?")) {
       try {
-        await api.patch(`/classes/${classId}/reset-code`); // Teacher-specific endpoint
+        await api.patch(`/classes/${classId}/reset-code`);
         fetchClasses();
       } catch (err) {
         alert("Failed to reset class code.");
@@ -568,8 +613,42 @@ function TeacherClassManagementTab() {
     }
   };
 
+  const handleArchiveAction = async (classId, isArchiving) => {
+    const action = isArchiving ? "archive" : "unarchive";
+    const confirmationText = `Are you sure you want to ${action} this class?`;
+    if (window.confirm(confirmationText)) {
+      try {
+        await api.patch(`/classes/${classId}/${action}`);
+        fetchClasses(); // Refresh the list after action
+      } catch (err) {
+        alert(`Failed to ${action} class.`);
+      }
+    }
+  };
+
+  const activeClasses = allClasses.filter(c => !c.is_archived);
+  const archivedClasses = allClasses.filter(c => c.is_archived);
+  const classesToDisplay = activeSubTab === 'active' ? activeClasses : archivedClasses;
+
   return (
     <div className="bg-white p-6 rounded-lg shadow-md border border-gray-200">
+      <div className="border-b border-gray-200 mb-4">
+        <nav className="-mb-px flex space-x-6" aria-label="Sub-tabs">
+          <button 
+            onClick={() => setActiveSubTab('active')} 
+            className={`${activeSubTab === 'active' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'} whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm`}
+          >
+            Active Classes
+          </button>
+          <button 
+            onClick={() => setActiveSubTab('archived')} 
+            className={`${activeSubTab === 'archived' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'} whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm`}
+          >
+            Archived Classes
+          </button>
+        </nav>
+      </div>
+
       {loading && <p>Loading classes...</p>}
       {error && <p className="text-red-500">{error}</p>}
       {!loading && !error && (
@@ -579,27 +658,28 @@ function TeacherClassManagementTab() {
               <tr>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Class Name</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Grade</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Teacher Name</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Created At</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Class Code</th>
                 <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {classes.map((c) => {
-                return (
-                  <tr key={c.id}>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{c.class_name}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{c.grade}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{c.teacher_name || 'N/A'}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{new Date(c.created_at).toLocaleString('en-US', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 font-mono">{c.class_code}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                      <button onClick={() => handleResetCode(c.id)} className="p-2 text-gray-500 hover:text-blue-600" title="Reset Code"><RefreshCw size={18} /></button>
-                    </td>
-                  </tr>
-                );
-              })}
+              {classesToDisplay.map((c) => (
+                <tr key={c.id}>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{c.class_name}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{c.grade}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 font-mono">{c.class_code}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                    {c.is_archived ? (
+                      <button onClick={() => handleArchiveAction(c.id, false)} className="p-2 text-gray-500 hover:text-green-600" title="Unarchive Class"><ArchiveRestore size={18} /></button>
+                    ) : (
+                      <>
+                        <button onClick={() => handleResetCode(c.id)} className="p-2 text-gray-500 hover:text-blue-600" title="Reset Code"><RefreshCw size={18} /></button>
+                        <button onClick={() => handleArchiveAction(c.id, true)} className="p-2 text-gray-500 hover:text-yellow-600" title="Archive Class"><Archive size={18} /></button>
+                      </>
+                    )}
+                  </td>
+                </tr>
+              ))}
             </tbody>
           </table>
         </div>

@@ -12,11 +12,18 @@ class LoginRequest(BaseModel):
     password: str
 
 
+from enum import Enum
+
+class UserRole(str, Enum):
+    teacher = "teacher"
+    student = "student"
+    admin = "admin"
+
 class RegisterRequest(BaseModel):
     email: EmailStr
     password: str
     username: str
-    role: str
+    role: UserRole
 
 
 class LoginResponse(BaseModel):
@@ -62,5 +69,7 @@ def signup(payload: RegisterRequest, sb: Client = Depends(get_supabase)):
 
         return {"message": "User registered successfully. Please check your email to verify."}
     except Exception as exc:
+        import traceback
         print(f"Error during signup: {exc}")
+        traceback.print_exc()
         raise HTTPException(status_code=400, detail=f"Database error saving new user: {exc}")

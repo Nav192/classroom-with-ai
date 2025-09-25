@@ -1,8 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 import supabase
-import traceback
-from ..dependencies import get_supabase, get_current_user
+from ..dependencies import get_supabase, get_supabase_admin, get_current_user
 from typing import List, Optional
 from uuid import UUID
 from datetime import datetime
@@ -24,6 +23,7 @@ class ClassResponse(BaseModel):
     grade: str
     teacher_name: Optional[str] = None
     created_at: datetime # Changed from str to datetime
+    is_archived: bool = False
     class Config:
         from_attributes = True
 
@@ -34,45 +34,67 @@ class StudentResponse(BaseModel):
     role: str
     class_name: str
 
+
+class ClassDetailsResponse(BaseModel):
+    id: UUID
+    class_name: str
+    grade: str
+    teacher_name: Optional[str] = None
+    class_code: str
+
 @router.post("", status_code=status.HTTP_201_CREATED, response_model=ClassResponse, summary="Create a new class (Admin only)")
 def create_class(
     class_data: ClassCreate,
     user: dict = Depends(get_current_user),
-    db: supabase.client.Client = Depends(get_supabase)
+    db: supabase.client.Client = Depends(get_supabase_admin)
 ):
+    print("DEBUG: create_class function entered.")
     if user.get("role") not in ["admin", "teacher"]:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only admins and teachers can create classes")
 
     try:
+        # Generate a unique 6-character alphanumeric class code
+        import random
+        import string
+        while True:
+            class_code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
+            # Check if the generated code already exists
+            existing_class = db.table("classes").select("id").eq("class_code", class_code).execute().data
+            if not existing_class:
+                break
+
         new_class = db.table("classes").insert({
             "class_name": class_data.class_name,
             "grade": class_data.grade,
             "created_by": user.get("id"),
-            "teacher_name": class_data.teacher_name # Store the input teacher name
-        }).execute()
+            "teacher_name": class_data.teacher_name,
+            "class_code": class_code
+        }, returning="representation").execute()
 
         if not new_class.data:
-            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to create class")
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to create class: No data returned from insert")
 
         new_class_data = new_class.data[0]
 
         # Automatically add the teacher as a member of the class they created
-        db.table("class_members").insert({
+        db.table("class_members").upsert({
             "class_id": new_class_data['id'],
             "user_id": user.get("id")
-        }).execute()
+        }, on_conflict="class_id,user_id").execute()
+        print(f"DEBUG: class_members upserted for class_id: {new_class_data['id']} and user_id: {user.get('id')}")
 
         # Use the teacher_name provided in the form for this specific class response
-        print(f"DEBUG_GEMINI_V1: class_data.teacher_name before assignment: {class_data.teacher_name}") # Debug print
+        print(f"DEBUG_GEMINI_V1: class_data.teacher_name before assignment: {class_data.teacher_name}")
         new_class_data["teacher_name"] = class_data.teacher_name
 
-        print(f"Returning new_class_data: {new_class_data}") # Add this print statement
+        print(f"Returning new_class_data: {new_class_data}")
 
         return new_class_data
 
     except Exception as e:
         print(f"Error creating class: {e}")
-        traceback.print_exc() # Print full traceback to console
+        import traceback
+        print(traceback.format_exc()) # Print full traceback to console
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -95,34 +117,95 @@ def join_class(
         if existing_member.data:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="User is already a member of this class")
 
-        new_member = db.table("class_members").insert({
+        new_member = db.table("class_members").upsert({
             "class_id": class_id,
             "user_id": user_id
-        }).execute()
+        }, on_conflict="class_id,user_id").execute()
+        print(f"DEBUG: join_class - upsert result: {new_member.data}")
 
         if not new_member.data:
             raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to join class")
 
         return {"message": "Successfully joined class"}
     except Exception as e:
+        print(f"Error joining class: {e}")
+        traceback.print_exc() # Print full traceback to console
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.patch("/{class_id}/archive", status_code=status.HTTP_200_OK, response_model=ClassResponse, summary="Archive a class")
+def archive_class(
+    class_id: UUID,
+    user: dict = Depends(get_current_user),
+    db: supabase.client.Client = Depends(get_supabase_admin)
+):
+    """Archives a class. Only the user who created the class can archive it."""
+    user_id = user.get("id")
+    
+    # Verify the user is the creator of the class
+    class_res = db.table("classes").select("id, created_by").eq("id", str(class_id)).single().execute()
+    if not class_res.data:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Class not found.")
+    if str(class_res.data["created_by"]) != str(user_id):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only the class creator can archive it.")
+
+    # Update the is_archived flag to True
+    updated_class_res = db.table("classes").update({"is_archived": True}).eq("id", str(class_id)).execute()
+    if not updated_class_res.data:
+        raise HTTPException(status_code=500, detail="Failed to archive class.")
+        
+    return updated_class_res.data[0]
+
+
+@router.patch("/{class_id}/unarchive", status_code=status.HTTP_200_OK, response_model=ClassResponse, summary="Unarchive a class")
+def unarchive_class(
+    class_id: UUID,
+    user: dict = Depends(get_current_user),
+    db: supabase.client.Client = Depends(get_supabase_admin)
+):
+    """Unarchives a class. Only the user who created the class can unarchive it."""
+    user_id = user.get("id")
+    
+    # Verify the user is the creator of the class
+    class_res = db.table("classes").select("id, created_by").eq("id", str(class_id)).single().execute()
+    if not class_res.data:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Class not found.")
+    if str(class_res.data["created_by"]) != str(user_id):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only the class creator can unarchive it.")
+
+    # Update the is_archived flag to False
+    updated_class_res = db.table("classes").update({"is_archived": False}).eq("id", str(class_id)).execute()
+    if not updated_class_res.data:
+        raise HTTPException(status_code=500, detail="Failed to unarchive class.")
+        
+    return updated_class_res.data[0]
 
 @router.get("/me", response_model=List[ClassResponse], summary="Get all classes for the current user")
 def get_my_classes(
+    show_archived: bool = False,
     user: dict = Depends(get_current_user),
     db: supabase.client.Client = Depends(get_supabase)
 ):
     """Fetches all classes the current user is a member of."""
     try:
         user_id = user.get("id")
+        print(f"DEBUG: get_my_classes - User ID: {user_id}")
         
         member_of_res = db.table("class_members").select("class_id").eq("user_id", user_id).execute()
+        print(f"DEBUG: get_my_classes - member_of_res Data: {member_of_res.data}")
         if not member_of_res.data:
             return []
         
         class_ids = [item['class_id'] for item in member_of_res.data]
+        print(f"DEBUG: get_my_classes - Class IDs from members: {class_ids}")
         
-        classes_res = db.table("classes").select("id, class_name, class_code, grade, teacher_name, created_at").in_("id", class_ids).execute()
+        query = db.table("classes").select("id, class_name, class_code, grade, teacher_name, created_at, is_archived").in_("id", class_ids)
+
+        if not show_archived:
+            query = query.eq("is_archived", False)
+
+        classes_res = query.order("created_at", desc=True).execute()
+        print(f"DEBUG: get_my_classes - Supabase Response Data (from class_ids): {classes_res.data}")
         
         return classes_res.data or []
 
@@ -134,14 +217,22 @@ def get_my_classes(
 
 @router.get("/created-by-me", response_model=List[ClassResponse], summary="Get all classes created by the current user (teacher)")
 def get_classes_created_by_me(
+    show_archived: bool = False,
     user: dict = Depends(get_current_user),
     db: supabase.client.Client = Depends(get_supabase)
 ):
     """Fetches all classes created by the current user."""
     try:
         user_id = user.get("id")
+        print(f"DEBUG: get_classes_created_by_me - User ID: {user_id}")
         
-        classes_res = db.table("classes").select("id, class_name, class_code, grade, teacher_name, created_at").eq("created_by", user_id).execute()
+        query = db.table("classes").select("id, class_name, class_code, grade, teacher_name, created_at, is_archived").eq("created_by", user_id)
+
+        if not show_archived:
+            query = query.eq("is_archived", False)
+
+        classes_res = query.order("created_at", desc=True).execute()
+        print(f"DEBUG: get_classes_created_by_me - Supabase Response Data: {classes_res.data}")
         
         return classes_res.data or []
 
@@ -149,6 +240,32 @@ def get_classes_created_by_me(
         raise HTTPException(status_code=500, detail=str(e))
 
 import traceback
+
+@router.get("/{class_id}", response_model=ClassDetailsResponse, summary="Get details for a specific class")
+def get_class_details(
+    class_id: UUID,
+    user: dict = Depends(get_current_user),
+    db: supabase.client.Client = Depends(get_supabase)
+):
+    """Fetches details for a single class, provided the user is the creator or a member."""
+    user_id = user.get("id")
+    
+    # First, check if the user is the creator of the class
+    is_class_creator_res = db.table("classes").select("id").eq("created_by", user_id).eq("id", str(class_id)).single().execute()
+
+    # If not the creator, check if they are a member
+    if not is_class_creator_res.data:
+        is_member_res = db.table("class_members").select("class_id").eq("user_id", user_id).eq("class_id", str(class_id)).single().execute()
+        if not is_member_res.data:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You are not authorized to view this class.")
+
+    # If authorized, fetch class details
+    class_res = db.table("classes").select("id, class_name, grade, teacher_name, class_code").eq("id", str(class_id)).single().execute()
+    if not class_res.data:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Class not found.")
+        
+    return class_res.data
+
 
 @router.get("/{class_id}/students", response_model=List[StudentResponse], summary="Get all students in a class")
 def get_students_in_class(

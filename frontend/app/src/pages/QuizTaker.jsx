@@ -69,6 +69,7 @@ export default function QuizTaker() {
         setLoading(true);
         const response = await api.get(`/quizzes/${quizId}/details`);
         setQuiz(response.data);
+        console.log("Fetched Quiz Data:", response.data); // Add this line
         setStartedAt(new Date());
         setTimeLeft(response.data.duration_minutes * 60);
       } catch (err) {
@@ -182,7 +183,7 @@ export default function QuizTaker() {
             <div key={q.id} className="border border-border p-4 rounded-lg">
               <p className="font-medium mb-3">{index + 1}. {q.text}</p>
               
-              {quiz.type === 'mcq' && (
+              {q.type === 'mcq' && (
                 <div className="space-y-2">
                   {q.options.map((option, optIndex) => (
                     <label key={optIndex} className="flex items-center gap-3 p-3 rounded-md hover:bg-muted/50 cursor-pointer">
@@ -201,7 +202,7 @@ export default function QuizTaker() {
                 </div>
               )}
 
-              {quiz.type === 'true_false' && (
+              {q.type === 'true_false' && (
                 <div className="space-x-4">
                   <label className="inline-flex items-center gap-2 p-3 rounded-md hover:bg-muted/50 cursor-pointer">
                     <input
@@ -230,7 +231,7 @@ export default function QuizTaker() {
                 </div>
               )}
 
-              {quiz.type === 'essay' && (
+              {q.type === 'essay' && (
                 <textarea
                   value={answers[q.id] || ''}
                   onChange={(e) => handleAnswerChange(q.id, e.target.value)}

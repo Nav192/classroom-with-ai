@@ -4,7 +4,7 @@ from typing import List, Optional
 from uuid import UUID
 from supabase import Client
 
-from ..dependencies import get_supabase, get_current_user, get_current_teacher_user, verify_class_membership
+from ..dependencies import get_supabase, get_supabase_admin, get_current_user, get_current_teacher_user, verify_class_membership
 
 router = APIRouter()
 
@@ -52,37 +52,37 @@ class StudentProgressDetailsResponse(BaseModel):
 @router.get("/class/{class_id}", response_model=ClassProgressResponse, dependencies=[Depends(verify_class_membership)])
 def get_class_progress(
     class_id: UUID,
-    sb: Client = Depends(get_supabase),
+    sb_admin: Client = Depends(get_supabase_admin),
     current_teacher: dict = Depends(get_current_teacher_user),
 ):
     """(For Teachers) Get progress summary for all students in a specific class."""
     try:
-        materials_in_class = sb.table("materials").select("id", count='exact').eq("class_id", str(class_id)).execute()
-        quizzes_in_class = sb.table("quizzes").select("id", count='exact').eq("class_id", str(class_id)).execute()
+        materials_in_class = sb_admin.table("materials").select("id", count='exact').eq("class_id", str(class_id)).execute()
+        quizzes_in_class = sb_admin.table("quizzes").select("id", count='exact').eq("class_id", str(class_id)).execute()
         total_materials = materials_in_class.count
         total_quizzes = quizzes_in_class.count
         materials_in_class_ids = [m['id'] for m in materials_in_class.data]
         quizzes_in_class_ids = [q['id'] for q in quizzes_in_class.data]
 
         # Get all students in the class
-        class_members = sb.table("class_members").select("user_id").eq("class_id", str(class_id)).execute().data or []
+        class_members = sb_admin.table("class_members").select("user_id").eq("class_id", str(class_id)).execute().data or []
         student_ids = [member['user_id'] for member in class_members]
 
         if not student_ids:
             return ClassProgressResponse(class_id=class_id, total_materials=total_materials, total_quizzes=total_quizzes, student_summaries=[])
 
         # Get profiles to filter for students and get emails
-        student_profiles = sb.table("profiles").select("id, email, username, role").in_("id", student_ids).eq("role", "student").execute().data or []
+        student_profiles = sb_admin.table("profiles").select("id, email, username, role").in_("id", student_ids).eq("role", "student").execute().data or []
         student_id_map = {p['id']: {'email': p['email'], 'username': p['username']} for p in student_profiles}
 
         # Fetch all progress data for these students for this class
         materials_progress = []
         if materials_in_class_ids:
-            materials_progress = sb.table("materials_progress").select("user_id, status").in_("user_id", student_ids).in_("material_id", materials_in_class_ids).execute().data or []
+            materials_progress = sb_admin.table("materials_progress").select("user_id, status").in_("user_id", student_ids).in_("material_id", materials_in_class_ids).execute().data or []
         
         quiz_results = []
         if quizzes_in_class_ids:
-            quiz_results = sb.table("results").select("user_id, quiz_id").in_("user_id", student_ids).in_("quiz_id", quizzes_in_class_ids).execute().data or []
+            quiz_results = sb_admin.table("results").select("user_id, quiz_id").in_("user_id", student_ids).in_("quiz_id", quizzes_in_class_ids).execute().data or []
 
         summaries = []
         for student_id, student_data in student_id_map.items():
@@ -196,33 +196,33 @@ def complete_material(
 @router.get("/class/{class_id}/students", response_model=StudentProgressDetailsResponse, dependencies=[Depends(verify_class_membership)])
 def get_student_progress_in_class(
     class_id: UUID,
-    sb: Client = Depends(get_supabase),
+    sb_admin: Client = Depends(get_supabase_admin),
     current_teacher: dict = Depends(get_current_teacher_user),
 ):
     """(For Teachers) Get detailed progress for all students in a specific class."""
     try:
         # Get total materials for the class
-        materials_in_class = sb.table("materials").select("id", count='exact').eq("class_id", str(class_id)).execute()
+        materials_in_class = sb_admin.table("materials").select("id", count='exact').eq("class_id", str(class_id)).execute()
         total_materials = materials_in_class.count
 
         # Get all students in the class
-        class_members = sb.table("class_members").select("user_id").eq("class_id", str(class_id)).execute().data or []
+        class_members = sb_admin.table("class_members").select("user_id").eq("class_id", str(class_id)).execute().data or []
         student_ids = [member['user_id'] for member in class_members]
 
         if not student_ids:
             return StudentProgressDetailsResponse(total_materials=total_materials, student_details=[])
 
         # Get profiles to filter for students and get emails/usernames
-        student_profiles = sb.table("profiles").select("id, username, email, role").in_("id", student_ids).eq("role", "student").execute().data or []
+        student_profiles = sb_admin.table("profiles").select("id, username, email, role").in_("id", student_ids).eq("role", "student").execute().data or []
         student_id_map = {p['id']: {"email": p['email'], "username": p['username']} for p in student_profiles}
 
         # Fetch all progress data for these students for this class
-        materials_in_class_ids = [m['id'] for m in (sb.table("materials").select("id").eq("class_id", str(class_id)).execute().data or [])]
-        materials_progress = sb.table("materials_progress").select("user_id, material_id, status").in_("user_id", list(student_id_map.keys())).in_("material_id", materials_in_class_ids).execute().data or []
+        materials_in_class_ids = [m['id'] for m in (sb_admin.table("materials").select("id").eq("class_id", str(class_id)).execute().data or [])]
+        materials_progress = sb_admin.table("materials_progress").select("user_id, material_id, status").in_("user_id", list(student_id_map.keys())).in_("material_id", materials_in_class_ids).execute().data or []
         # Get all quiz IDs for the class
-        class_quizzes = sb.table("quizzes").select("id").eq("class_id", str(class_id)).execute().data or []
+        class_quizzes = sb_admin.table("quizzes").select("id").eq("class_id", str(class_id)).execute().data or []
         class_quiz_ids = [q['id'] for q in class_quizzes]
-        quiz_results = sb.table("results").select("user_id, quiz_id, score, total, created_at").in_("user_id", list(student_id_map.keys())).in_("quiz_id", class_quiz_ids).execute().data or []
+        quiz_results = sb_admin.table("results").select("user_id, quiz_id, score, total, created_at").in_("user_id", list(student_id_map.keys())).in_("quiz_id", class_quiz_ids).execute().data or []
 
         student_details = []
         for student_id, profile in student_id_map.items():
