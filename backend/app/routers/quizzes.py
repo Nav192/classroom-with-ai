@@ -3,10 +3,10 @@ from pydantic import BaseModel
 from typing import List, Optional
 import uuid
 from uuid import UUID
+from datetime import datetime
 
 from ..dependencies import get_supabase, get_supabase_admin, get_current_user, get_current_teacher_user, verify_class_membership
 from supabase import Client
-from ...supabase_client import supabase
 
 router = APIRouter()
 
@@ -14,13 +14,13 @@ router = APIRouter()
 class QuestionIn(BaseModel):
     id: Optional[UUID] = None
     text: str
-    type: str # 'mcq', 'true_false', 'essay'
+    type: str
     options: Optional[List[str]] = None
     answer: Optional[str] = None
 
 class QuizIn(BaseModel):
     topic: str
-    type: str # 'mcq', 'true_false', 'essay'
+    type: str
     duration_minutes: int
     max_attempts: Optional[int] = 2
     questions: List[QuestionIn]
@@ -28,7 +28,8 @@ class QuizIn(BaseModel):
 
 class QuestionOut(QuestionIn):
     id: UUID
-    class Config: { "from_attributes": True }
+    class Config:
+        from_attributes = True
 
 class ClassInfo(BaseModel):
     name: str
@@ -40,9 +41,23 @@ class QuizOut(BaseModel):
     class_id: UUID
     duration_minutes: int
     max_attempts: Optional[int] = None
-    is_archived: bool = False
     class Config:
         from_attributes = True
+
+# New model for the detailed quiz list for teachers
+class QuizForTeacher(QuizOut):
+    created_at: datetime
+    is_active: bool
+    available_from: Optional[datetime] = None
+    available_until: Optional[datetime] = None
+    students_taken: int = 0
+    students_not_taken: int = 0
+
+# New model for updating quiz settings
+class QuizSettingsIn(BaseModel):
+    is_active: Optional[bool] = None
+    available_from: Optional[datetime] = None
+    available_until: Optional[datetime] = None
 
 class QuizWithQuestions(QuizOut):
     questions: List[QuestionOut]
@@ -58,8 +73,6 @@ def create_quiz(
     current_teacher: dict = Depends(get_current_teacher_user),
 ):
     teacher_id = current_teacher.get("id")
-    print(payload.model_dump_json(indent=2)) # Debugging: Print incoming payload
-
     if any(q.type != payload.type for q in payload.questions):
         raise HTTPException(status_code=400, detail="All question types must match the quiz type.")
 
@@ -87,7 +100,6 @@ def create_quiz(
             sb.table("quizzes").delete().eq("id", new_quiz['id']).execute()
             raise HTTPException(status_code=500, detail="Failed to create questions for the quiz.")
 
-        # Handle quiz visibility
         if payload.visible_to is not None:
             visibility_to_insert = [
                 {"quiz_id": new_quiz['id'], "user_id": str(student_id)} for student_id in payload.visible_to
@@ -106,32 +118,14 @@ def update_quiz(
     sb_admin: Client = Depends(get_supabase_admin),
     current_teacher: dict = Depends(get_current_teacher_user),
 ):
-    """Updates an existing quiz and its questions. Teacher must be the creator."""
-    teacher_id = current_teacher.get("id")
-    print(payload.model_dump_json(indent=2)) # Debugging: Print incoming payload
-
-    # 1. Verify quiz exists and was created by the current teacher
-    quiz_res = sb_admin.table("quizzes").select("id, user_id, class_id").eq("id", str(quiz_id)).single().execute()
-    if not quiz_res.data:
-        raise HTTPException(status_code=404, detail="Quiz not found.")
-    
-    existing_quiz = quiz_res.data
-    quiz_creator_id = existing_quiz["user_id"]
-    class_id = existing_quiz["class_id"]
-
-    # Check if teacher is a member of the class OR the creator of the quiz OR the creator of the class
-    is_member = sb_admin.table("class_members").select("id").eq("class_id", class_id).eq("user_id", teacher_id).execute().data
-    is_class_creator = sb_admin.table("classes").select("id").eq("id", class_id).eq("created_by", teacher_id).execute().data
-    is_quiz_creator = (str(teacher_id) == str(quiz_creator_id))
-
-    if not is_member and not is_class_creator and not is_quiz_creator:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You are not authorized to update this quiz.")
+    """Updates an existing quiz and its questions."""
+    # RLS policies will enforce that the user is a teacher for the class.
 
     if any(q.type != payload.type for q in payload.questions):
         raise HTTPException(status_code=400, detail="All question types must match the quiz type.")
 
     try:
-        # 2. Update quiz details
+        # 1. Update quiz details
         updated_quiz_data = {
             "topic": payload.topic,
             "type": payload.type,
@@ -140,111 +134,144 @@ def update_quiz(
         }
         sb_admin.table("quizzes").update(updated_quiz_data).eq("id", str(quiz_id)).execute()
 
-        # 3. Handle questions
+        # 2. Handle questions (upsert, insert, delete)
         existing_questions_res = sb_admin.table("questions").select("id").eq("quiz_id", str(quiz_id)).execute()
-        existing_question_ids = {q["id"] for q in existing_questions_res.data or []}
+        existing_question_ids = {str(q['id']) for q in existing_questions_res.data or []}
         
         questions_to_insert = []
         questions_to_update = []
         incoming_question_ids = set()
 
         for q_payload in payload.questions:
-            if q_payload.id: # Existing question
+            question_dict = q_payload.model_dump()
+            question_dict['quiz_id'] = str(quiz_id)
+
+            if q_payload.id:
+                # This is an existing question to be updated
                 incoming_question_ids.add(str(q_payload.id))
-                questions_to_update.append({
-                    "id": str(q_payload.id),
-                    "text": q_payload.text,
-                    "type": q_payload.type,
-                    "options": q_payload.options,
-                    "answer": q_payload.answer,
-                    "quiz_id": str(quiz_id)
-                })
-            else: # New question
-                questions_to_insert.append({
-                    "text": q_payload.text,
-                    "type": q_payload.type,
-                    "options": q_payload.options,
-                    "answer": q_payload.answer,
-                    "quiz_id": str(quiz_id)
-                })
-        
-        # Perform updates and inserts
+                question_dict['id'] = str(q_payload.id) # Ensure UUID is string
+                questions_to_update.append(question_dict)
+            else:
+                # This is a new question to be inserted
+                question_dict.pop('id', None) # Remove null ID
+                questions_to_insert.append(question_dict)
+
         if questions_to_update:
-            sb_admin.table("questions").upsert(questions_to_update, on_conflict="id").execute()
+            sb_admin.table("questions").upsert(questions_to_update).execute()
         if questions_to_insert:
             sb_admin.table("questions").insert(questions_to_insert).execute()
 
-        # Identify and delete removed questions
         questions_to_delete_ids = existing_question_ids - incoming_question_ids
         if questions_to_delete_ids:
             sb_admin.table("questions").delete().in_("id", list(questions_to_delete_ids)).execute()
 
-        # 4. Sync quiz visibility
+        # 3. Sync quiz visibility
         if payload.visible_to is not None:
-            # Get current visibility settings
-            existing_visibility_res = sb_admin.table("quiz_visibility").select("user_id").eq("quiz_id", str(quiz_id)).execute()
-            existing_user_ids = {UUID(item['user_id']) for item in existing_visibility_res.data}
-            
-            incoming_user_ids = set(payload.visible_to)
-            
-            # Determine who to add and who to remove
-            ids_to_add = incoming_user_ids - existing_user_ids
-            ids_to_remove = existing_user_ids - incoming_user_ids
-            
-            # Add new visibility entries
-            if ids_to_add:
-                sb_admin.table("quiz_visibility").insert([
-                    {"quiz_id": str(quiz_id), "user_id": str(uid)} for uid in ids_to_add
-                ]).execute()
-                
-            # Remove old visibility entries
-            if ids_to_remove:
-                sb_admin.table("quiz_visibility").delete().eq("quiz_id", str(quiz_id)).in_("user_id", [str(uid) for uid in ids_to_remove]).execute()
-        else:
-            # If visible_to is not provided or is null, assume visible to all -> clear all specific visibility rules
             sb_admin.table("quiz_visibility").delete().eq("quiz_id", str(quiz_id)).execute()
+            if payload.visible_to:
+                visibility_to_insert = [
+                    {"quiz_id": str(quiz_id), "user_id": str(student_id)} for student_id in payload.visible_to
+                ]
+                sb_admin.table("quiz_visibility").insert(visibility_to_insert).execute()
 
-        # Fetch the updated quiz to return
-        updated_quiz_res = sb_admin.table("quizzes").select("id, topic, type, class_id, duration_minutes, max_attempts").eq("id", str(quiz_id)).single().execute()
+        updated_quiz_res = sb_admin.table("quizzes").select("*").eq("id", str(quiz_id)).single().execute()
         return updated_quiz_res.data
 
     except Exception as e:
+        # Log the full error for debugging
+        print(f"Error during quiz update: {e}")
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"An error occurred: {str(e)}")
 
-@router.get("/{class_id}", response_model=List[QuizOut], dependencies=[Depends(verify_class_membership)])
+@router.patch("/{quiz_id}/settings", status_code=status.HTTP_204_NO_CONTENT)
+def update_quiz_settings(
+    quiz_id: UUID,
+    settings: QuizSettingsIn,
+    sb: Client = Depends(get_supabase),
+    user: dict = Depends(get_current_teacher_user)
+):
+    """
+    Updates settings for a quiz, such as activation status and availability window.
+    Only accessible by teachers of the class.
+    """
+    # RLS policies will handle authorization.
+    quiz_res = sb.table("quizzes").select("id").eq("id", str(quiz_id)).single().execute()
+    if not quiz_res.data:
+        raise HTTPException(status_code=404, detail="Quiz not found")
+
+    update_data = settings.model_dump(exclude_unset=True)
+    if not update_data:
+        return
+
+    # Convert datetime objects to ISO 8601 strings for JSON serialization
+    if 'available_from' in update_data and update_data['available_from'] is not None:
+        update_data['available_from'] = update_data['available_from'].isoformat()
+    
+    if 'available_until' in update_data and update_data['available_until'] is not None:
+        update_data['available_until'] = update_data['available_until'].isoformat()
+
+    try:
+        sb.table("quizzes").update(update_data).eq("id", str(quiz_id)).execute()
+    except Exception as e:
+        print(f"Error during quiz settings update: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"An error occurred while updating quiz settings: {str(e)}")
+
+    return
+
+@router.get("/{class_id}", response_model=List[QuizForTeacher], dependencies=[Depends(verify_class_membership)])
 def list_quizzes(
     class_id: UUID,
     teacher_view: bool = False,
     sb: Client = Depends(get_supabase),
     current_user: dict = Depends(get_current_user)
 ):
-    """Lists available quizzes for a specific class based on visibility rules."""
+    """Lists available quizzes for a specific class."""
     if teacher_view:
-        # Fetch quizzes
-        quizzes_res = sb.table("quizzes").select(
-            "id, topic, type, class_id, duration_minutes, max_attempts"
-        ).eq("class_id", str(class_id)).order("created_at", desc=True).execute()
-        
+        # 1. Fetch all quizzes for the class.
+        quizzes_res = sb.table("quizzes").select("*").eq("class_id", str(class_id)).order("created_at", desc=True).execute()
         quizzes_data = quizzes_res.data or []
-        
-        # Fetch class details for all quizzes in one go to get is_archived status
-        class_ids = list(set([q["class_id"] for q in quizzes_data]))
-        classes_res = sb.table("classes").select("id, is_archived").in_("id", class_ids).execute()
-        class_is_archived_map = {c["id"]: c["is_archived"] for c in classes_res.data}
+        if not quizzes_data:
+            return []
 
-        # Flatten the result to match QuizOut model
+        # 2. Get all student IDs for the class.
+        class_members_res = sb.table("class_members").select("user_id, profiles(role)").eq("class_id", str(class_id)).execute()
+        student_ids = {
+            m["user_id"] for m in class_members_res.data 
+            if m.get("profiles") and m["profiles"]["role"] == "student"
+        }
+        total_students = len(student_ids)
+
+        # 3. Get all results for the quizzes in this class.
+        quiz_ids = [q["id"] for q in quizzes_data]
+        results_res = sb.table("results").select("quiz_id, user_id").in_("quiz_id", quiz_ids).execute()
+        results_data = results_res.data or []
+
+        # 4. Create a map of quiz_id -> set of students who took it
+        takers_map = {}
+        for result in results_data:
+            quiz_id_res = result["quiz_id"]
+            user_id_res = result["user_id"]
+            if user_id_res in student_ids:  # Only count students
+                if quiz_id_res not in takers_map:
+                    takers_map[quiz_id_res] = set()
+                takers_map[quiz_id_res].add(user_id_res)
+
+        # 5. Format the final output.
         formatted_quizzes = []
-        for quiz_data in quizzes_data:
+        for quiz in quizzes_data:
+            quiz_id_item = quiz["id"]
+            students_taken_count = len(takers_map.get(quiz_id_item, set()))
+            
             formatted_quiz = {
-                "id": quiz_data["id"],
-                "topic": quiz_data["topic"],
-                "type": quiz_data["type"],
-                "class_id": quiz_data["class_id"],
-                "duration_minutes": quiz_data["duration_minutes"],
-                "max_attempts": quiz_data["max_attempts"],
-                "is_archived": class_is_archived_map.get(quiz_data["class_id"], False), # Default to False if not found
+                **quiz,
+                "students_taken": students_taken_count,
+                "students_not_taken": total_students - students_taken_count,
             }
             formatted_quizzes.append(formatted_quiz)
+
         return formatted_quizzes
     else:
         # For student view, use RPC function to filter by visibility
@@ -262,37 +289,43 @@ def get_quiz_details(
     current_user: dict = Depends(get_current_user),
 ):
     """Retrieves details for a specific quiz, including its questions."""
-    quiz_res = sb.table("quizzes").select("*").eq("id", str(quiz_id)).single().execute()
+    from datetime import datetime, timezone
+
+    quiz_res = sb.table("quizzes").select("*, classes(class_name)").eq("id", str(quiz_id)).single().execute()
     if not quiz_res.data:
         raise HTTPException(status_code=404, detail="Quiz not found")
 
     quiz_data = quiz_res.data
-    class_id = quiz_data.get("class_id")
+    user_role = current_user.get('role')
 
-    # Manually fetch class details
-    if class_id:
-        class_res = sb.table("classes").select("class_name").eq("id", str(class_id)).single().execute()
-        if class_res.data:
-            # Alias class_name to name to match the frontend expectation
-            quiz_data["classes"] = {"name": class_res.data.get("class_name")}
+    # Server-side security check for students
+    if user_role == 'student':
+        if not quiz_data.get('is_active', False):
+            raise HTTPException(status_code=403, detail="This quiz is currently inactive.")
 
-    # Verify user is a member of the class OR the creator of the quiz OR the creator of the class
-    quiz_class_id = quiz_data['class_id']
-    user_id = current_user.get('id')
-    quiz_creator_id = quiz_data.get('user_id') # Assuming quiz_data contains user_id of creator
+        now = datetime.now(timezone.utc)
+        available_from_str = quiz_data.get('available_from')
+        available_until_str = quiz_data.get('available_until')
 
-    is_member = sb.table("class_members").select("id").eq("class_id", quiz_class_id).eq("user_id", user_id).execute().data
-    is_class_creator = sb.table("classes").select("id").eq("id", quiz_class_id).eq("created_by", user_id).execute().data
-    is_quiz_creator = (str(user_id) == str(quiz_creator_id))
+        if available_from_str:
+            available_from = datetime.fromisoformat(available_from_str)
+            if now < available_from:
+                raise HTTPException(status_code=403, detail="This quiz is not yet available.")
 
-    if not is_member and not is_class_creator and not is_quiz_creator:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You are not authorized to view this quiz.")
+        if available_until_str:
+            available_until = datetime.fromisoformat(available_until_str)
+            if now > available_until:
+                raise HTTPException(status_code=403, detail="The deadline for this quiz has passed.")
 
-    questions_res = sb.table("questions").select("*").eq("quiz_id", str(quiz_id)).execute()
+    # RLS on the 'quizzes' table already ensures the user has access.
     
-    # Fetch visibility settings
+    questions_res = sb.table("questions").select("*").eq("quiz_id", str(quiz_id)).execute()
     visibility_res = sb.table("quiz_visibility").select("user_id").eq("quiz_id", str(quiz_id)).execute()
     visible_to_ids = [item['user_id'] for item in visibility_res.data]
+
+    # Rename 'classes' to 'class_info' to match frontend model if needed
+    if quiz_data.get("classes"):
+        quiz_data["classes"] = {"name": quiz_data["classes"]["class_name"]}
 
     return {**quiz_data, "questions": questions_res.data or [], "visible_to": visible_to_ids}
 
@@ -311,20 +344,18 @@ async def delete_quiz(quiz_id: str, user: dict = Depends(get_current_teacher_use
     response = sb.from_('quizzes').delete().eq('id', quiz_id).execute()
     if not response.data:
         raise HTTPException(status_code=404, detail="Quiz not found or already deleted")
-    return {"message": "Quiz and associated questions/answers deleted successfully"}
+    return 
 
 @router.post("/{quiz_id}/duplicate", response_model=QuizOut)
 async def duplicate_quiz(quiz_id: str, user: dict = Depends(get_current_teacher_user), sb: Client = Depends(get_supabase)):
     # Fetch the original quiz
-    original_quiz_response = sb.from_('quizzes').select('id, topic, type, duration_minutes, max_attempts, user_id, class_id').eq('id', quiz_id).execute()
+    original_quiz_response = sb.from_('quizzes').select('id, topic, type, duration_minutes, max_attempts, user_id, class_id').eq('id', quiz_id).single().execute()
     if not original_quiz_response.data:
         raise HTTPException(status_code=404, detail="Original quiz not found")
-    original_quiz = original_quiz_response.data[0]
+    original_quiz = original_quiz_response.data
 
     # Create a new quiz entry
-    new_quiz_id = str(uuid.uuid4())
     new_quiz_data = {
-        "id": new_quiz_id,
         "topic": f"Copy of {original_quiz['topic']}",
         "type": original_quiz['type'],
         "duration_minutes": original_quiz['duration_minutes'],
@@ -335,26 +366,22 @@ async def duplicate_quiz(quiz_id: str, user: dict = Depends(get_current_teacher_
     new_quiz_response = sb.from_('quizzes').insert(new_quiz_data).execute()
     if not new_quiz_response.data:
         raise HTTPException(status_code=500, detail="Failed to duplicate quiz")
+    new_quiz = new_quiz_response.data[0]
     
-    # Fetch original questions and their answers
+    # Fetch original questions
     original_questions_response = sb.from_('questions').select('id, text, type, options, answer').eq('quiz_id', quiz_id).execute()
     original_questions = original_questions_response.data
 
-    for original_question in original_questions:
-        new_question_id = str(uuid.uuid4())
-        new_question_data = {
-            "id": new_question_id,
-            "quiz_id": new_quiz_id,
-            "text": original_question['text'],
-            "type": original_question['type'],
-            "options": original_question['options'],
-            "answer": original_question['answer']
-        }
-        sb.from_('questions').insert(new_question_data).execute()
+    if original_questions:
+        questions_to_insert = []
+        for oq in original_questions:
+            questions_to_insert.append({
+                "quiz_id": new_quiz['id'],
+                "text": oq['text'],
+                "type": oq['type'],
+                "options": oq['options'],
+                "answer": oq['answer']
+            })
+        sb.from_('questions').insert(questions_to_insert).execute()
     
-    # Fetch and return the newly created quiz with its questions and answers
-    duplicated_quiz_response = sb.from_('quizzes').select('*, questions(*)').eq('id', new_quiz_id).single().execute()
-    if not duplicated_quiz_response.data:
-        raise HTTPException(status_code=500, detail="Failed to retrieve duplicated quiz")
-    
-    return duplicated_quiz_response.data
+    return new_quiz

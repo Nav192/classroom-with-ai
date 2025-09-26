@@ -472,16 +472,12 @@ function UploadMaterialModal({ classId, setIsModalOpen, onMaterialUploaded }) {
 // Quizzes Tab Component
 function QuizzesTab({ classId }) {
   const [quizzes, setQuizzes] = useState([]);
-  const [viewingResultsOfQuizId, setViewingResultsOfQuizId] = useState(null);
-  const [studentStatuses, setStudentStatuses] = useState([]);
   const [loadingQuizzes, setLoadingQuizzes] = useState(true);
-  const [loadingStatuses, setLoadingStatuses] = useState(false);
   const [error, setError] = useState("");
 
   const fetchQuizzes = () => {
     setLoadingQuizzes(true);
     setError("");
-    // Fetch all quizzes for the teacher, bypassing student visibility rules
     api.get(`/quizzes/${classId}?teacher_view=true`)
       .then(res => setQuizzes(res.data || []))
       .catch(() => setError("Failed to load quizzes."))
@@ -489,42 +485,6 @@ function QuizzesTab({ classId }) {
   };
 
   useEffect(fetchQuizzes, [classId]);
-
-  const handleViewResults = (quizId) => {
-    if (viewingResultsOfQuizId === quizId) {
-      setViewingResultsOfQuizId(null);
-    } else {
-      setViewingResultsOfQuizId(quizId);
-      setLoadingStatuses(true);
-      setError("");
-      api.get(`/dashboard/teacher/class/${classId}/quiz/${quizId}/status`)
-        .then(res => setStudentStatuses(res.data || []))
-        .catch(() => setError("Failed to load student quiz statuses."))
-        .finally(() => setLoadingStatuses(false));
-    }
-  };
-
-  const handleDeleteQuiz = async (quizId) => {
-    if (window.confirm("Are you sure you want to delete this quiz? This action cannot be undone.")) {
-      try {
-        await api.delete(`/quizzes/${quizId}`);
-        fetchQuizzes();
-      } catch (err) {
-        setError(err.response?.data?.detail || "Failed to delete quiz.");
-      }
-    }
-  };
-
-  const handleDuplicateQuiz = async (quizId) => {
-    if (window.confirm("Are you sure you want to duplicate this quiz?")) {
-      try {
-        await api.post(`/quizzes/${quizId}/duplicate`);
-        fetchQuizzes(); // Refresh the list to show the new quiz
-      } catch (err) {
-        setError(err.response?.data?.detail || "Failed to duplicate quiz.");
-      }
-    }
-  };
 
   return (
     <div className="bg-white p-6 rounded-lg shadow-md border border-gray-200 space-y-6">
@@ -535,58 +495,212 @@ function QuizzesTab({ classId }) {
 
       {loadingQuizzes ? <p>Loading quizzes...</p> : (
         quizzes.length > 0 ? (
-          <ul className="space-y-4">
+          <div className="space-y-4">
             {quizzes.map(quiz => (
-              <li key={quiz.id} className="p-4 rounded-lg bg-gray-50 border border-gray-200">
-                <div className="flex justify-between items-center">
-                  <p className="font-semibold text-gray-800">{quiz.topic}</p>
-                  <div className="flex items-center gap-2">
-                    <button onClick={() => handleViewResults(quiz.id)} className="bg-blue-100 text-blue-700 px-3 py-1 rounded-md hover:bg-blue-200 text-sm font-medium">{viewingResultsOfQuizId === quiz.id ? 'Hide Results' : 'View Results'}</button>
-                    <Link to={`/teacher/quiz/edit/${quiz.id}`} className="p-2 text-gray-500 hover:text-blue-600 transition-colors" title="Edit Quiz"><Pencil size={18} /></Link>
-                    <button onClick={() => handleDuplicateQuiz(quiz.id)} className="p-2 text-gray-500 hover:text-green-600 transition-colors" title="Duplicate Quiz"><Copy size={18} /></button>
-                    <button onClick={() => handleDeleteQuiz(quiz.id)} className="p-2 text-gray-500 hover:text-red-600 transition-colors" title="Delete Quiz"><Trash2 size={18} /></button>
-                  </div>
-                </div>
-                {viewingResultsOfQuizId === quiz.id && (
-                  <div className="mt-4">
-                    {loadingStatuses ? <p>Loading results...</p> : (
-                      studentStatuses.length > 0 ? (
-                        <div className="overflow-x-auto border-t border-gray-200">
-                          <table className="min-w-full divide-y divide-gray-200">
-                            <thead className="bg-gray-50">
-                              <tr>
-                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Student</th>
-                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Score</th>
-                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Percentage</th>
-                              </tr>
-                            </thead>
-                            <tbody className="bg-white divide-y divide-gray-200">
-                              {studentStatuses.map((status) => (
-                                <tr key={status.student_id}>
-                                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{status.username}</td>
-                                  <td className="px-6 py-4 whitespace-nowrap text-sm">
-                                    <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${status.status === 'Completed' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
-                                      {status.status}
-                                    </span>
-                                  </td>
-                                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{status.score !== null ? `${status.score} / ${status.total}` : 'N/A'}</td>
-                                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{status.percentage !== null ? `${status.percentage}%` : 'N/A'}</td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      ) : <p className="text-gray-500 text-center py-10">No student has taken this quiz yet.</p>
-                    )}
-                  </div>
-                )}
-              </li>
+              <QuizCard key={quiz.id} quiz={quiz} fetchQuizzes={fetchQuizzes} setError={setError} />
             ))}
-          </ul>
+          </div>
         ) : <p className="text-gray-500 text-center py-10">No quizzes created for this class yet.</p>
       )}
-      {error && <p className="text-red-500 text-sm mt-4">{error}</p>}
+      {error && <p className="text-red-500 text-sm mt-4 text-center">{error}</p>}
+    </div>
+  );
+}
+
+function QuizCard({ quiz, fetchQuizzes, setError }) {
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isDetailsOpen, setIsDetailsOpen] = useState(false);
+  const [studentDetails, setStudentDetails] = useState([]);
+  const [isLoadingDetails, setIsLoadingDetails] = useState(false);
+  const [isActive, setIsActive] = useState(quiz.is_active);
+
+  const toLocalISOString = (dateString) => {
+    if (!dateString) return "";
+    const date = new Date(dateString);
+    const timezoneOffset = date.getTimezoneOffset() * 60000;
+    const localDate = new Date(date.getTime() - timezoneOffset);
+    return localDate.toISOString().slice(0, 16);
+  };
+
+  const [availableFrom, setAvailableFrom] = useState(toLocalISOString(quiz.available_from));
+  const [availableFromSec, setAvailableFromSec] = useState(quiz.available_from ? new Date(quiz.available_from).getSeconds().toString().padStart(2, '0') : '00');
+  const [availableUntil, setAvailableUntil] = useState(toLocalISOString(quiz.available_until));
+  const [availableUntilSec, setAvailableUntilSec] = useState(quiz.available_until ? new Date(quiz.available_until).getSeconds().toString().padStart(2, '0') : '00');
+  const [isSaving, setIsSaving] = useState(false);
+
+  const handleToggleActive = async (newIsActive) => {
+    setIsActive(newIsActive);
+    try {
+      await api.patch(`/quizzes/${quiz.id}/settings`, { is_active: newIsActive });
+    } catch (err) {
+      setError(err.response?.data?.detail || "Failed to update quiz status.");
+      setIsActive(!newIsActive);
+    }
+  };
+
+  const handleSaveSettings = async () => {
+    setIsSaving(true);
+    setError("");
+    try {
+      const fromDate = availableFrom ? new Date(availableFrom) : null;
+      if (fromDate) {
+        fromDate.setSeconds(parseInt(availableFromSec, 10) || 0);
+      }
+
+      const untilDate = availableUntil ? new Date(availableUntil) : null;
+      if (untilDate) {
+        untilDate.setSeconds(parseInt(availableUntilSec, 10) || 0);
+      }
+
+      await api.patch(`/quizzes/${quiz.id}/settings`, {
+        available_from: fromDate ? fromDate.toISOString() : null,
+        available_until: untilDate ? untilDate.toISOString() : null,
+      });
+      setIsSettingsOpen(false);
+    } catch (err) {
+      setError(err.response?.data?.detail || "Failed to save schedule.");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleViewDetails = async () => {
+    const shouldOpen = !isDetailsOpen;
+    setIsDetailsOpen(shouldOpen);
+    if (shouldOpen && studentDetails.length === 0) {
+      setIsLoadingDetails(true);
+      setError("");
+      try {
+        const res = await api.get(`/dashboard/teacher/class/${quiz.class_id}/quiz/${quiz.id}/status`);
+        setStudentDetails(res.data || []);
+      } catch (e) {
+        console.error("Error fetching student quiz statuses:", e);
+        setError("Failed to load student quiz statuses.");
+      } finally {
+        setIsLoadingDetails(false);
+      }
+    }
+  };
+
+  const handleDeleteQuiz = async () => {
+    if (window.confirm("Are you sure you want to delete this quiz? This action cannot be undone.")) {
+      try {
+        await api.delete(`/quizzes/${quiz.id}`);
+        fetchQuizzes();
+      } catch (err) {
+        setError(err.response?.data?.detail || "Failed to delete quiz.");
+      }
+    }
+  };
+
+  const handleDuplicateQuiz = async () => {
+    if (window.confirm("Are you sure you want to duplicate this quiz?")) {
+      try {
+        await api.post(`/quizzes/${quiz.id}/duplicate`);
+        fetchQuizzes();
+      } catch (err) {
+        setError(err.response?.data?.detail || "Failed to duplicate quiz.");
+      }
+    }
+  };
+
+  return (
+    <div className="p-4 rounded-lg bg-gray-50 border border-gray-200 transition-shadow hover:shadow-sm">
+      {/* Main Info Bar */}
+      <div className="flex flex-wrap justify-between items-center gap-4">
+        <div className="flex-grow">
+          <p className="font-semibold text-gray-800 text-lg">{quiz.topic}</p>
+          <p className="text-xs text-gray-500">Created: {new Date(quiz.created_at).toLocaleString()}</p>
+        </div>
+        <div className="flex items-center gap-4">
+          <div className="text-center">
+            <p className="font-bold text-lg text-green-600">{quiz.students_taken}</p>
+            <p className="text-xs text-gray-500">Taken</p>
+          </div>
+          <div className="text-center">
+            <p className="font-bold text-lg text-red-600">{quiz.students_not_taken}</p>
+            <p className="text-xs text-gray-500">Not Taken</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <button onClick={handleViewDetails} className="bg-blue-100 text-blue-700 px-3 py-1 rounded-md hover:bg-blue-200 text-sm font-medium">{isDetailsOpen ? 'Hide Details' : 'View Details'}</button>
+          <Link to={`/teacher/quiz/edit/${quiz.id}`} className="p-2 text-gray-500 hover:text-blue-600 transition-colors" title="Edit Quiz"><Pencil size={18} /></Link>
+          <button onClick={handleDuplicateQuiz} className="p-2 text-gray-500 hover:text-green-600 transition-colors" title="Duplicate Quiz"><Copy size={18} /></button>
+          <button onClick={handleDeleteQuiz} className="p-2 text-gray-500 hover:text-red-600 transition-colors" title="Delete Quiz"><Trash2 size={18} /></button>
+        </div>
+        <div className="flex items-center">
+          <label className="relative inline-flex items-center cursor-pointer">
+            <input type="checkbox" checked={isActive} onChange={(e) => handleToggleActive(e.target.checked)} className="sr-only peer" />
+            <div className="w-11 h-6 bg-gray-200 rounded-full peer peer-focus:ring-2 peer-focus:ring-blue-300 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-600"></div>
+            <span className="ml-3 text-sm font-medium text-gray-600">{isActive ? "Active" : "Inactive"}</span>
+          </label>
+        </div>
+        <button onClick={() => setIsSettingsOpen(!isSettingsOpen)} className="bg-gray-100 text-gray-700 px-3 py-1 rounded-md hover:bg-gray-200 text-sm font-medium">{isSettingsOpen ? 'Hide Settings' : 'Schedule'}</button>
+      </div>
+
+      {/* Collapsible Student Details Section */}
+      {isDetailsOpen && (
+        <div className="mt-4 pt-4 border-t border-gray-200">
+          {isLoadingDetails ? <p>Loading details...</p> : (
+            studentDetails.length > 0 ? (
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-100">
+                    <tr>
+                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Student</th>
+                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Score</th>
+                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Percentage</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {studentDetails.map((status) => (
+                      <tr key={status.student_id}>
+                        <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-900">{status.username}</td>
+                        <td className="px-4 py-3 whitespace-nowrap text-sm">
+                          <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${status.status === 'Completed' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
+                            {status.status}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">{status.score !== null ? `${status.score} / ${status.total}` : 'N/A'}</td>
+                        <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">{status.percentage !== null ? `${status.percentage}%` : 'N/A'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : <p className="text-gray-500 text-center py-5">No students in this class to display.</p>
+          )}
+        </div>
+      )}
+
+      {/* Collapsible Settings Section */}
+      {isSettingsOpen && (
+        <div className="mt-4 pt-4 border-t border-gray-200">
+          <h4 className="font-semibold text-md mb-3">Quiz Schedule</h4>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
+            <div>
+              <label htmlFor={`from-${quiz.id}`} className="block text-sm font-medium text-gray-700 mb-1">Available From</label>
+              <div className="flex items-center gap-2">
+                <input type="datetime-local" id={`from-${quiz.id}`} value={availableFrom} onChange={(e) => setAvailableFrom(e.target.value)} className="w-full px-3 py-2 bg-white border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm" />
+                <input type="number" min="0" max="59" value={availableFromSec} onChange={(e) => setAvailableFromSec(e.target.value)} className="w-20 px-3 py-2 bg-white border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm" placeholder="SS" />
+              </div>
+            </div>
+            <div>
+              <label htmlFor={`until-${quiz.id}`} className="block text-sm font-medium text-gray-700 mb-1">Available Until</label>
+              <div className="flex items-center gap-2">
+                <input type="datetime-local" id={`until-${quiz.id}`} value={availableUntil} onChange={(e) => setAvailableUntil(e.target.value)} className="w-full px-3 py-2 bg-white border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm" />
+                <input type="number" min="0" max="59" value={availableUntilSec} onChange={(e) => setAvailableUntilSec(e.target.value)} className="w-20 px-3 py-2 bg-white border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm" placeholder="SS" />
+              </div>
+            </div>
+          </div>
+          <div className="flex justify-end mt-4">
+            <button onClick={handleSaveSettings} disabled={isSaving} className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 disabled:bg-blue-400 flex items-center justify-center gap-2 text-sm">
+              {isSaving ? 'Saving...' : 'Save Settings'}
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
