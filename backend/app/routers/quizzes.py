@@ -1,10 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from typing import List, Optional
+import uuid
 from uuid import UUID
 
 from ..dependencies import get_supabase, get_supabase_admin, get_current_user, get_current_teacher_user, verify_class_membership
 from supabase import Client
+from ...supabase_client import supabase
 
 router = APIRouter()
 
@@ -294,24 +296,65 @@ def get_quiz_details(
 
     return {**quiz_data, "questions": questions_res.data or [], "visible_to": visible_to_ids}
 
-@router.delete("/{quiz_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_quiz(
-    quiz_id: UUID,
-    sb: Client = Depends(get_supabase),
-    current_teacher: dict = Depends(get_current_teacher_user),
-):
-    """Deletes a quiz. Only accessible by the teacher who created it."""
-    user_id = current_teacher.get("id")
 
-    # Verify quiz exists and was created by the current teacher
-    quiz_res = sb.table("quizzes").select("id, user_id").eq("id", str(quiz_id)).single().execute()
-    if not quiz_res.data:
-        raise HTTPException(status_code=404, detail="Quiz not found.")
+@router.delete("/{quiz_id}", status_code=204)
+async def delete_quiz(quiz_id: str, user: dict = Depends(get_current_teacher_user), sb: Client = Depends(get_supabase)):
+    # First, delete associated questions and answers
+    questions_response = sb.from_('questions').select('id').eq('quiz_id', quiz_id).execute()
+    question_ids = [q['id'] for q in questions_response.data]
+
+    if question_ids:
+        sb.from_('quiz_answers').delete().in_('question_id', question_ids).execute()
+        sb.from_('questions').delete().eq('quiz_id', quiz_id).execute()
     
-    if str(quiz_res.data["user_id"]) != str(user_id):
-        raise HTTPException(status_code=403, detail="You are not authorized to delete this quiz.")
+    # Then delete the quiz itself
+    response = sb.from_('quizzes').delete().eq('id', quiz_id).execute()
+    if not response.data:
+        raise HTTPException(status_code=404, detail="Quiz not found or already deleted")
+    return {"message": "Quiz and associated questions/answers deleted successfully"}
 
-    # Delete the quiz (questions and results will be deleted by cascade)
-    sb.table("quizzes").delete().eq("id", str(quiz_id)).execute()
+@router.post("/{quiz_id}/duplicate", response_model=QuizOut)
+async def duplicate_quiz(quiz_id: str, user: dict = Depends(get_current_teacher_user), sb: Client = Depends(get_supabase)):
+    # Fetch the original quiz
+    original_quiz_response = sb.from_('quizzes').select('id, topic, type, duration_minutes, max_attempts, user_id, class_id').eq('id', quiz_id).execute()
+    if not original_quiz_response.data:
+        raise HTTPException(status_code=404, detail="Original quiz not found")
+    original_quiz = original_quiz_response.data[0]
 
-    return
+    # Create a new quiz entry
+    new_quiz_id = str(uuid.uuid4())
+    new_quiz_data = {
+        "id": new_quiz_id,
+        "topic": f"Copy of {original_quiz['topic']}",
+        "type": original_quiz['type'],
+        "duration_minutes": original_quiz['duration_minutes'],
+        "max_attempts": original_quiz['max_attempts'],
+        "user_id": user['id'],
+        "class_id": original_quiz['class_id']
+    }
+    new_quiz_response = sb.from_('quizzes').insert(new_quiz_data).execute()
+    if not new_quiz_response.data:
+        raise HTTPException(status_code=500, detail="Failed to duplicate quiz")
+    
+    # Fetch original questions and their answers
+    original_questions_response = sb.from_('questions').select('id, text, type, options, answer').eq('quiz_id', quiz_id).execute()
+    original_questions = original_questions_response.data
+
+    for original_question in original_questions:
+        new_question_id = str(uuid.uuid4())
+        new_question_data = {
+            "id": new_question_id,
+            "quiz_id": new_quiz_id,
+            "text": original_question['text'],
+            "type": original_question['type'],
+            "options": original_question['options'],
+            "answer": original_question['answer']
+        }
+        sb.from_('questions').insert(new_question_data).execute()
+    
+    # Fetch and return the newly created quiz with its questions and answers
+    duplicated_quiz_response = sb.from_('quizzes').select('*, questions(*)').eq('id', new_quiz_id).single().execute()
+    if not duplicated_quiz_response.data:
+        raise HTTPException(status_code=500, detail="Failed to retrieve duplicated quiz")
+    
+    return duplicated_quiz_response.data

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import { UploadCloud, BookOpen, Plus, Download, LogIn, Users, Trash2, Pencil, RefreshCw, ChevronLeft, Archive, ArchiveRestore } from "lucide-react";
+import { UploadCloud, BookOpen, Plus, Download, LogIn, Users, Trash2, Pencil, RefreshCw, ChevronLeft, Archive, ArchiveRestore, Copy } from "lucide-react";
 import api from "../services/api";
 import CreateClassModal from "../components/CreateClassModal";
 
@@ -515,6 +515,17 @@ function QuizzesTab({ classId }) {
     }
   };
 
+  const handleDuplicateQuiz = async (quizId) => {
+    if (window.confirm("Are you sure you want to duplicate this quiz?")) {
+      try {
+        await api.post(`/quizzes/${quizId}/duplicate`);
+        fetchQuizzes(); // Refresh the list to show the new quiz
+      } catch (err) {
+        setError(err.response?.data?.detail || "Failed to duplicate quiz.");
+      }
+    }
+  };
+
   return (
     <div className="bg-white p-6 rounded-lg shadow-md border border-gray-200 space-y-6">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
@@ -532,6 +543,7 @@ function QuizzesTab({ classId }) {
                   <div className="flex items-center gap-2">
                     <button onClick={() => handleViewResults(quiz.id)} className="bg-blue-100 text-blue-700 px-3 py-1 rounded-md hover:bg-blue-200 text-sm font-medium">{viewingResultsOfQuizId === quiz.id ? 'Hide Results' : 'View Results'}</button>
                     <Link to={`/teacher/quiz/edit/${quiz.id}`} className="p-2 text-gray-500 hover:text-blue-600 transition-colors" title="Edit Quiz"><Pencil size={18} /></Link>
+                    <button onClick={() => handleDuplicateQuiz(quiz.id)} className="p-2 text-gray-500 hover:text-green-600 transition-colors" title="Duplicate Quiz"><Copy size={18} /></button>
                     <button onClick={() => handleDeleteQuiz(quiz.id)} className="p-2 text-gray-500 hover:text-red-600 transition-colors" title="Delete Quiz"><Trash2 size={18} /></button>
                   </div>
                 </div>

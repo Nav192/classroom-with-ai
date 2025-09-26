@@ -1,5 +1,5 @@
 from supabase import create_client, Client
-from app.config import settings
+from .app.config import settings
 
 url: str = settings.SUPABASE_URL
 key: str = settings.supabase_anon_key

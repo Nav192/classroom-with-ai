@@ -55,7 +55,7 @@ USING (auth.uid() = created_by);
 -- 4. Policy for Members (SELECT - any class they are a member of): Authenticated users (students and teachers) can view classes they are a member of.
 CREATE POLICY "Allow members to view their classes"
 ON public.classes FOR SELECT
-USING (public.is_member_of_class(id, auth.uid()));
+USING (id IN (SELECT class_id FROM public.class_members WHERE user_id = auth.uid()));
 
 
 -- -----------------------------------------------------------
