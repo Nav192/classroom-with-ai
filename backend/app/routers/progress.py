@@ -242,11 +242,10 @@ def get_student_progress_in_class(
             
             # Calculate quiz average score
             total_quiz_score = sum(r['score'] for r in latest_student_results)
-            total_quiz_possible_score = sum(r['total'] for r in latest_student_results)
             
             quiz_average_percentage = 0.0 # Default to 0.0 if no quizzes attempted
-            if total_quiz_possible_score > 0:
-                quiz_average_percentage = (total_quiz_score / total_quiz_possible_score) * 100
+            if quizzes_attempted > 0:
+                quiz_average_percentage = total_quiz_score / quizzes_attempted
             
             # Calculate materials progress percentage
             materials_progress_percentage = 0.0

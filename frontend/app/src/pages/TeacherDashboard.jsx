@@ -3,6 +3,7 @@ import { useNavigate, Link } from "react-router-dom";
 import { UploadCloud, BookOpen, Plus, Download, LogIn, Users, Trash2, Pencil, RefreshCw, ChevronLeft, Archive, ArchiveRestore, Copy } from "lucide-react";
 import api from "../services/api";
 import CreateClassModal from "../components/CreateClassModal";
+import QuizWeightSettings from "./QuizSettings";
 
 // Main Dashboard Component
 export default function TeacherDashboard() {
@@ -217,6 +218,7 @@ function ClassTabs({ selectedClass, onDataChange, username, onBackToClassSelecti
         {activeTab === "students" && <StudentsTab classId={selectedClass.id} className={selectedClass.class_name} />}
         {activeTab === "materials" && <MaterialsTab classId={selectedClass.id} onDataChange={onDataChange} />}
         {activeTab === "quizzes" && <QuizzesTab classId={selectedClass.id} />}
+        {activeTab === "settings" && <SettingsTab classId={selectedClass.id} />}
         {activeTab === "class_management" && <TeacherClassManagementTab teacherName={username} />}
       </div>
     </div>
@@ -474,6 +476,7 @@ function QuizzesTab({ classId }) {
   const [quizzes, setQuizzes] = useState([]);
   const [loadingQuizzes, setLoadingQuizzes] = useState(true);
   const [error, setError] = useState("");
+  const [showWeightSettings, setShowWeightSettings] = useState(false);
 
   const fetchQuizzes = () => {
     setLoadingQuizzes(true);
@@ -490,8 +493,15 @@ function QuizzesTab({ classId }) {
     <div className="bg-white p-6 rounded-lg shadow-md border border-gray-200 space-y-6">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <h2 className="text-xl font-semibold">Class Quizzes</h2>
-        <Link to={`/teacher/quiz/new?classId=${classId}`} className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 flex items-center gap-2 transition-colors text-sm"><Plus size={16} /> Create Quiz</Link>
+        <div className="flex items-center gap-2">
+          <button onClick={() => setShowWeightSettings(!showWeightSettings)} className="bg-gray-200 text-gray-700 px-4 py-2 rounded-md hover:bg-gray-300 transition-colors text-sm">
+            {showWeightSettings ? 'Hide Weights' : 'Set Weights'}
+          </button>
+          <Link to={`/teacher/quiz/new?classId=${classId}`} className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 flex items-center gap-2 transition-colors text-sm"><Plus size={16} /> Create Quiz</Link>
+        </div>
       </div>
+
+      {showWeightSettings && <QuizWeightSettings classId={classId} />}
 
       {loadingQuizzes ? <p>Loading quizzes...</p> : (
         quizzes.length > 0 ? (
@@ -506,6 +516,8 @@ function QuizzesTab({ classId }) {
     </div>
   );
 }
+
+
 
 function QuizCard({ quiz, fetchQuizzes, setError }) {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -649,8 +661,7 @@ function QuizCard({ quiz, fetchQuizzes, setError }) {
                     <tr>
                       <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Student</th>
                       <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Best Score</th>
-                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Percentage</th>
+                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Score</th>
                       <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Attempts</th>
                     </tr>
                   </thead>
@@ -663,8 +674,7 @@ function QuizCard({ quiz, fetchQuizzes, setError }) {
                             {status.status}
                           </span>
                         </td>
-                        <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">{status.score !== null ? `${status.score} / ${status.total}` : 'N/A'}</td>
-                        <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">{status.percentage !== null ? `${status.percentage}%` : 'N/A'}</td>
+                        <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">{status.score !== null ? `${status.score}` : 'N/A'}</td>
                         <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">{status.status === 'Completed' ? `${status.attempts_taken} / ${status.max_attempts}` : 'N/A'}</td>
                       </tr>
                     ))}

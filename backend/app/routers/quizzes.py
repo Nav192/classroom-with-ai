@@ -566,8 +566,21 @@ async def submit_quiz(
     questions_map = {UUID(q["id"]): q for q in questions_res.data}
 
     # 3. Calculate score and store individual answers
-    score = 0
-    total_questions = len(questions_map)
+    # Fetch class_id from the quiz
+    class_id_res = sb.table("quizzes").select("class_id").eq("id", str(quiz_id)).single().execute()
+    if not class_id_res.data:
+        raise HTTPException(status_code=404, detail="Could not find class for the quiz.")
+    class_id = class_id_res.data['class_id']
+
+    # Fetch quiz weights
+    weights_res = sb.table("quiz_weights").select("*").eq("class_id", class_id).single().execute()
+    weights = weights_res.data if weights_res.data else {"mcq_weight": 1, "true_false_weight": 1, "essay_weight": 0} # Default weights if not set
+
+    mcq_correct = 0
+    tf_correct = 0
+    mcq_total = 0
+    tf_total = 0
+
     answers_to_insert = []
 
     for q_id_str, user_answer in payload.user_answers.items():
@@ -575,20 +588,19 @@ async def submit_quiz(
         question = questions_map.get(q_id)
 
         if not question:
-            # This should ideally not happen if frontend sends valid question IDs
             continue
 
         is_correct = False
-        # For multiple choice and true/false, we compare answers.
-        if question["type"] in ["mcq", "true_false"]:
-            # Normalize both the user's answer and the correct answer for a reliable, case-insensitive comparison.
-            user_answer_norm = str(user_answer or "").lower().strip()
-            correct_answer_norm = str(question.get("answer") or "").lower().strip()
-            
-            if user_answer_norm == correct_answer_norm:
-                score += 1
+        if question["type"] == "mcq":
+            mcq_total += 1
+            if str(user_answer).lower().strip() == str(question.get("answer")).lower().strip():
+                mcq_correct += 1
                 is_correct = True
-        # For essay questions, is_correct will be null, and score will be 0 initially (manual grading needed).
+        elif question["type"] == "true_false":
+            tf_total += 1
+            if str(user_answer).lower().strip() == str(question.get("answer")).lower().strip():
+                tf_correct += 1
+                is_correct = True
 
         answers_to_insert.append({
             "result_id": str(payload.result_id),
@@ -596,16 +608,30 @@ async def submit_quiz(
             "user_id": user_id,
             "answer": user_answer,
             "is_correct": is_correct if question["type"] in ["mcq", "true_false"] else None,
-            "attempt_number": attempt_number # Store attempt number with answers
+            "attempt_number": attempt_number
         })
+
+    # Calculate weighted score
+    total_weight = weights['mcq_weight'] + weights['true_false_weight'] + weights['essay_weight']
+    score = 0
     
+    if total_weight > 0:
+        mcq_percentage = (mcq_correct / mcq_total) * 100 if mcq_total > 0 else 0
+        tf_percentage = (tf_correct / tf_total) * 100 if tf_total > 0 else 0
+        
+        mcq_weighted_score = mcq_percentage * (weights['mcq_weight'] / total_weight)
+        tf_weighted_score = tf_percentage * (weights['true_false_weight'] / total_weight)
+        
+        # Essay score is handled separately during manual grading, so its initial contribution is 0
+        score = round(mcq_weighted_score + tf_weighted_score)
+
     if answers_to_insert:
         sb.table("quiz_answers").insert(answers_to_insert).execute()
 
     # 4. Update the results table
     update_data = {
         "score": score,
-        "total": total_questions,
+        "total": 100, # Total is now always 100 as score is a percentage
         "ended_at": datetime.now(timezone.utc).isoformat()
     }
     print(f"DEBUG: Attempting to update result {payload.result_id} with data: {update_data}")
@@ -622,7 +648,7 @@ async def submit_quiz(
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"An error occurred during quiz result update: {str(e)}")
 
-    return {"message": "Quiz submitted successfully", "score": score, "total": total_questions}
+    return {"message": "Quiz submitted successfully", "score": score, "total": 100}
 
 @router.post("/{quiz_id}/cancel", status_code=status.HTTP_200_OK)
 async def cancel_quiz_attempt(

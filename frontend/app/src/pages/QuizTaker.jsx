@@ -216,7 +216,7 @@ export default function QuizTaker() {
           );
         }
         setSubmissionMessage(
-          `Quiz submitted successfully! Your score: ${response.data.score}/${response.data.total}.`
+          `Quiz submitted successfully! Your score: ${response.data.score}.`
         );
       } catch (err) {
         setSubmissionMessage(

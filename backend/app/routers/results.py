@@ -286,8 +286,51 @@ def grade_essay_answer(
         sb.table("quiz_answers").update({"is_correct": payload.is_correct}).eq("id", str(answer_id)).execute()
 
         # 4. Recalculate the total score for the result
-        all_answers_for_result = sb.table("quiz_answers").select("is_correct").eq("result_id", result_id).execute().data or []
-        new_score = sum(1 for ans in all_answers_for_result if ans['is_correct'] is True)
+        # Get all questions for the quiz to categorize them by type
+        questions_res = sb.table("questions").select("id, type").eq("quiz_id", quiz_id).execute().data or []
+        question_types = {str(q['id']): q['type'] for q in questions_res}
+
+        # Get all answers for this result to recalculate the entire score
+        all_answers_for_result = sb.table("quiz_answers").select("question_id, is_correct").eq("result_id", result_id).execute().data or []
+
+        # Fetch quiz weights
+        weights_res = sb.table("quiz_weights").select("*").eq("class_id", class_id).single().execute()
+        weights = weights_res.data if weights_res.data else {"mcq_weight": 1, "true_false_weight": 1, "essay_weight": 1} # Default weights
+
+        mcq_correct, tf_correct, essay_correct = 0, 0, 0
+        mcq_total, tf_total, essay_total = 0, 0, 0
+
+        for q_id, q_type in question_types.items():
+            if q_type == 'mcq':
+                mcq_total += 1
+            elif q_type == 'true_false':
+                tf_total += 1
+            elif q_type == 'essay':
+                essay_total += 1
+
+        for ans in all_answers_for_result:
+            q_type = question_types.get(str(ans['question_id']))
+            if ans['is_correct']:
+                if q_type == 'mcq':
+                    mcq_correct += 1
+                elif q_type == 'true_false':
+                    tf_correct += 1
+                elif q_type == 'essay':
+                    essay_correct += 1
+        
+        # Recalculate weighted score
+        total_weight = weights['mcq_weight'] + weights['true_false_weight'] + weights['essay_weight']
+        new_score = 0
+        if total_weight > 0:
+            mcq_percentage = (mcq_correct / mcq_total) * 100 if mcq_total > 0 else 0
+            tf_percentage = (tf_correct / tf_total) * 100 if tf_total > 0 else 0
+            essay_percentage = (essay_correct / essay_total) * 100 if essay_total > 0 else 0
+            
+            mcq_weighted_score = mcq_percentage * (weights['mcq_weight'] / total_weight)
+            tf_weighted_score = tf_percentage * (weights['true_false_weight'] / total_weight)
+            essay_weighted_score = essay_percentage * (weights['essay_weight'] / total_weight)
+            
+            new_score = round(mcq_weighted_score + tf_weighted_score + essay_weighted_score)
 
         # 5. Update the main result score
         updated_result = sb.table("results").update({"score": new_score}).eq("id", result_id).select("*").single().execute()

@@ -135,7 +135,7 @@ export default function ResultsPage() {
                 >
                   <p>Quiz ID: {result.quiz_id}</p>
                   <p>
-                    Score: {result.score}/{result.total}
+                    Score: {result.score}
                   </p>
                   <p>
                     Started At: {new Date(result.started_at).toLocaleString()}
