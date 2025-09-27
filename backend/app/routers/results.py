@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException, Depends, status
 from pydantic import BaseModel
 from typing import List, Optional
 from uuid import UUID
-from datetime import datetime
+from datetime import datetime, timezone
 
 from ..dependencies import get_supabase, get_supabase_admin, get_current_user, get_current_student_user, get_current_teacher_user, verify_class_membership
 from supabase import Client
@@ -134,7 +134,7 @@ async def submit_quiz(
             "total": total_questions,
             "attempt_number": current_attempt_number,
             "started_at": payload.started_at.isoformat(),
-            "ended_at": payload.ended_at.isoformat(),
+            "ended_at": datetime.now(timezone.utc).isoformat(),
         }).execute()
 
         if not result_insert_res.data:

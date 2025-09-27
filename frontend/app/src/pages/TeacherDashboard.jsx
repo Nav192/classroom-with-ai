@@ -649,8 +649,9 @@ function QuizCard({ quiz, fetchQuizzes, setError }) {
                     <tr>
                       <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Student</th>
                       <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Score</th>
+                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Best Score</th>
                       <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Percentage</th>
+                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Attempts</th>
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
@@ -664,6 +665,7 @@ function QuizCard({ quiz, fetchQuizzes, setError }) {
                         </td>
                         <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">{status.score !== null ? `${status.score} / ${status.total}` : 'N/A'}</td>
                         <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">{status.percentage !== null ? `${status.percentage}%` : 'N/A'}</td>
+                        <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">{status.status === 'Completed' ? `${status.attempts_taken} / ${status.max_attempts}` : 'N/A'}</td>
                       </tr>
                     ))}
                   </tbody>

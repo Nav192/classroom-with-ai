@@ -697,28 +697,27 @@ async def start_quiz_attempt(
         raise HTTPException(status_code=404, detail="Quiz not found.")
     max_attempts = quiz_res.data.get('max_attempts') or 1 # Default to 1 if not set
 
-    # 3. Count the number of *completed* attempts for this user and quiz.
-    # A completed attempt is one that has an 'ended_at' timestamp.
-    completed_attempts_res = sb.table("results").select("id", count="exact")\
+    # 3. Count all previous attempts for this user and quiz (finished or not).
+    # An attempt is counted as soon as it is started.
+    all_attempts_res = sb.table("results").select("id", count="exact")\
         .eq("quiz_id", str(quiz_id))\
         .eq("user_id", user_id)\
-        .not_.is_("ended_at", None)\
         .execute()
     
-    completed_attempts_count = completed_attempts_res.count or 0
+    previous_attempts_count = all_attempts_res.count or 0
     
-    if completed_attempts_count >= max_attempts:
+    if previous_attempts_count >= max_attempts:
         raise HTTPException(status_code=403, detail=f"Maximum attempt limit ({max_attempts}) for this quiz has been reached.")
 
-    # 4. The new attempt number is the number of completed attempts + 1.
-    current_attempt_number = completed_attempts_count + 1
+    # 4. The new attempt number is the number of previous attempts + 1.
+    current_attempt_number = previous_attempts_count + 1
 
     # 5. Create a new result entry for the new attempt.
     new_result_data = {
         "quiz_id": str(quiz_id),
         "user_id": user_id,
         "attempt_number": current_attempt_number,
-        "started_at": datetime.now().astimezone().isoformat(),
+        "started_at": datetime.now(timezone.utc).isoformat(),
         "status": "in_progress" # Explicitly set status
     }
     new_result_res = sb.table("results").insert(new_result_data).execute()
