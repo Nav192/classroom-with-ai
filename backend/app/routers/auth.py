@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException, status, Depends
 from pydantic import BaseModel, EmailStr
 from supabase import Client
 
-from ..dependencies import get_supabase
+from ..dependencies import get_supabase, get_supabase_admin
 
 router = APIRouter()
 
@@ -34,14 +34,14 @@ class LoginResponse(BaseModel):
 
 
 @router.post("/login", response_model=LoginResponse)
-def login(payload: LoginRequest, sb: Client = Depends(get_supabase)):
+def login(payload: LoginRequest, sb_admin: Client = Depends(get_supabase_admin)):
     try:
-        res = sb.auth.sign_in_with_password({"email": payload.email, "password": payload.password})
+        res = sb_admin.auth.sign_in_with_password({"email": payload.email, "password": payload.password})
         if res.user is None or res.session is None or res.session.access_token is None:
             raise HTTPException(status_code=401, detail="Invalid credentials")
 
         # Get role from our public.profiles table
-        profile = sb.table("profiles").select("role, username").eq("id", res.user.id).single().execute()
+        profile = sb_admin.table("profiles").select("role, username").eq("id", res.user.id).single().execute()
         if not profile.data or not profile.data.get("role"):
             raise HTTPException(status_code=404, detail="User profile or role not found.")
 

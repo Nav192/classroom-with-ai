@@ -3,9 +3,9 @@ from pydantic import BaseModel
 from typing import List, Optional
 import uuid
 from uuid import UUID
-from datetime import datetime
+from datetime import datetime, timezone
 
-from ..dependencies import get_supabase, get_supabase_admin, get_current_user, get_current_teacher_user, verify_class_membership
+from ..dependencies import get_supabase, get_supabase_admin, get_current_user, get_current_teacher_user, get_current_student_user, verify_class_membership, verify_quiz_membership
 from supabase import Client
 
 router = APIRouter()
@@ -63,6 +63,38 @@ class QuizWithQuestions(QuizOut):
     questions: List[QuestionOut]
     classes: Optional[ClassInfo] = None
     visible_to: Optional[List[UUID]] = None
+    current_attempt_number: int = 1
+    started_at: Optional[datetime] = None
+    result_id: Optional[UUID] = None
+
+class CheckpointIn(BaseModel):
+    question_id: UUID
+    answer: str
+    attempt_number: int
+
+class CheckpointOut(BaseModel):
+    id: UUID
+    user_id: UUID
+    quiz_id: UUID
+    question_id: UUID
+    answer: str
+    attempt_number: int
+    created_at: datetime
+    updated_at: datetime
+    class Config:
+        from_attributes = True
+
+class QuizSubmissionIn(BaseModel):
+    result_id: UUID
+    user_answers: dict # {question_id: answer_text}
+
+class QuizCancelIn(BaseModel):
+    result_id: UUID
+
+class QuizAttemptStartOut(BaseModel):
+    result_id: UUID
+    started_at: datetime
+    attempt_number: int
 
 # --- Endpoints ---
 @router.post("/{class_id}", status_code=status.HTTP_201_CREATED, response_model=QuizOut, dependencies=[Depends(verify_class_membership)])
@@ -229,6 +261,10 @@ def list_quizzes(
     current_user: dict = Depends(get_current_user)
 ):
     """Lists available quizzes for a specific class."""
+    user_id = current_user.get("id")
+    user_role = current_user.get("role")
+    print(f"DEBUG: list_quizzes called for user_id: {user_id}, role: {user_role}, class_id: {class_id}, teacher_view: {teacher_view}")
+
     if teacher_view:
         # 1. Fetch all quizzes for the class.
         quizzes_res = sb.table("quizzes").select("*").eq("class_id", str(class_id)).order("created_at", desc=True).execute()
@@ -289,21 +325,21 @@ def get_quiz_details(
     current_user: dict = Depends(get_current_user),
 ):
     """Retrieves details for a specific quiz, including its questions."""
-    from datetime import datetime, timezone
-
     quiz_res = sb.table("quizzes").select("*, classes(class_name)").eq("id", str(quiz_id)).single().execute()
     if not quiz_res.data:
         raise HTTPException(status_code=404, detail="Quiz not found")
 
     quiz_data = quiz_res.data
     user_role = current_user.get('role')
+    user_id = current_user.get("id")
+    print(f"DEBUG: get_quiz_details called for user_id: {user_id}, quiz_id: {quiz_id}")
 
     # Server-side security check for students
     if user_role == 'student':
         if not quiz_data.get('is_active', False):
             raise HTTPException(status_code=403, detail="This quiz is currently inactive.")
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now().astimezone()
         available_from_str = quiz_data.get('available_from')
         available_until_str = quiz_data.get('available_until')
 
@@ -323,11 +359,38 @@ def get_quiz_details(
     visibility_res = sb.table("quiz_visibility").select("user_id").eq("quiz_id", str(quiz_id)).execute()
     visible_to_ids = [item['user_id'] for item in visibility_res.data]
 
+    # Add current_attempt_number logic here
+    user_id = current_user.get("id")
+    started_at_val = None
+    result_id_val = None
+    current_attempt_number = 1 # Initialize current_attempt_number here
+
+    if user_role == 'student':
+        # Check for an existing, unfinished attempt
+        existing_result_res = sb.table("results").select("id, started_at, attempt_number")\
+            .eq("user_id", user_id)\
+            .eq("quiz_id", str(quiz_id))\
+            .is_("ended_at", None)\
+            .order("started_at", desc=True)\
+            .limit(1)\
+            .execute()
+        
+        if existing_result_res.data:
+            existing_result = existing_result_res.data[0]
+            result_id_val = UUID(existing_result['id'])
+            started_at_val = datetime.fromisoformat(existing_result['started_at'])
+            current_attempt_number = existing_result['attempt_number']
+            print(f"DEBUG: Existing attempt found. result_id_val: {result_id_val}, started_at_val: {started_at_val}")
+        else:
+            # No existing unfinished attempt, so no started_at or result_id yet
+            # Frontend will display 'Start Quiz' button
+            print(f"DEBUG: No existing unfinished attempt found for quiz {quiz_id} and user {user_id}.")
+
     # Rename 'classes' to 'class_info' to match frontend model if needed
     if quiz_data.get("classes"):
         quiz_data["classes"] = {"name": quiz_data["classes"]["class_name"]}
 
-    return {**quiz_data, "questions": questions_res.data or [], "visible_to": visible_to_ids}
+    return {**quiz_data, "questions": questions_res.data or [], "visible_to": visible_to_ids, "current_attempt_number": current_attempt_number, "started_at": started_at_val, "result_id": result_id_val}
 
 
 @router.delete("/{quiz_id}", status_code=204)
@@ -385,3 +448,288 @@ async def duplicate_quiz(quiz_id: str, user: dict = Depends(get_current_teacher_
         sb.from_('questions').insert(questions_to_insert).execute()
     
     return new_quiz
+
+@router.post("/{quiz_id}/checkpoint", status_code=status.HTTP_200_OK, response_model=CheckpointOut)
+async def save_quiz_checkpoint(
+    quiz_id: UUID,
+    payload: CheckpointIn,
+    sb: Client = Depends(get_supabase), # RLS-enabled client
+    current_student: dict = Depends(get_current_student_user),
+    is_member: bool = Depends(verify_quiz_membership)
+):
+    """Saves a student's partial answer for a quiz as a checkpoint."""
+    user_id = current_student.get("id")
+
+    try:
+        # Verify the quiz exists and belongs to the class
+        quiz_check = sb.table("quizzes").select("id, class_id").eq("id", str(quiz_id)).single().execute()
+        if not quiz_check.data:
+            raise HTTPException(status_code=404, detail="Quiz not found.")
+        
+        # RLS on quiz_checkpoints will ensure user_id matches auth.uid()
+        checkpoint_data = {
+            "user_id": str(user_id),
+            "quiz_id": str(quiz_id),
+            "question_id": str(payload.question_id),
+            "answer": payload.answer,
+            "attempt_number": payload.attempt_number,
+        }
+        
+        # Upsert the checkpoint
+        response = sb.table("quiz_checkpoints").upsert(
+            checkpoint_data,
+            on_conflict="user_id,quiz_id,question_id,attempt_number"
+        ).execute()
+
+        if not response.data:
+            raise HTTPException(status_code=500, detail="Failed to save checkpoint.")
+        
+        return response.data[0]
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        import traceback
+        print(f"Error saving quiz checkpoint: {e}")
+        print(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"An error occurred: {str(e)}")
+
+
+@router.get("/{quiz_id}/checkpoint", response_model=List[CheckpointOut])
+async def get_quiz_checkpoints(
+    quiz_id: UUID,
+    attempt_number: int,
+    sb: Client = Depends(get_supabase), # RLS-enabled client
+    current_student: dict = Depends(get_current_student_user),
+    is_member: bool = Depends(verify_quiz_membership)
+):
+    """Retrieves all saved checkpoints for a student for a specific quiz and attempt."""
+    user_id = current_student.get("id")
+
+    try:
+        # Verify the quiz exists and belongs to the class
+        quiz_check = sb.table("quizzes").select("id, class_id").eq("id", str(quiz_id)).single().execute()
+        if not quiz_check.data:
+            raise HTTPException(status_code=404, detail="Quiz not found.")
+
+        # RLS on quiz_checkpoints will ensure user_id matches auth.uid()
+        response = sb.table("quiz_checkpoints").select("*")\
+            .eq("user_id", str(user_id))\
+            .eq("quiz_id", str(quiz_id))\
+            .eq("attempt_number", attempt_number)\
+            .execute()
+        
+        return response.data or []
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        import traceback
+        print(f"Error retrieving quiz checkpoints: {e}")
+        print(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"An error occurred: {str(e)}")
+
+@router.post("/{quiz_id}/submit", status_code=status.HTTP_200_OK)
+async def submit_quiz(
+    quiz_id: UUID,
+    payload: QuizSubmissionIn,
+    sb: Client = Depends(get_supabase_admin), # Use admin client for score update
+    current_student: dict = Depends(get_current_student_user),
+    is_member: bool = Depends(verify_quiz_membership)
+):
+    """Submits a student's quiz answers, calculates score, and marks the quiz as ended."""
+    user_id = current_student.get("id")
+
+    # 1. Verify the result entry and that it belongs to the user and is not yet ended
+    result_res = sb.table("results").select("id, quiz_id, user_id, ended_at, attempt_number")\
+        .eq("id", str(payload.result_id))\
+        .eq("quiz_id", str(quiz_id))\
+        .eq("user_id", user_id)\
+        .single()\
+        .execute()
+
+    if not result_res.data:
+        raise HTTPException(status_code=404, detail="Quiz attempt not found or does not belong to user.")
+    
+    result_data = result_res.data
+    if result_data.get("ended_at"):
+        raise HTTPException(status_code=400, detail="Quiz has already been submitted.")
+
+    attempt_number = result_data["attempt_number"]
+
+    # 2. Fetch quiz questions and correct answers
+    questions_res = sb.table("questions").select("id, type, answer")\
+        .eq("quiz_id", str(quiz_id))\
+        .execute()
+    
+    if not questions_res.data:
+        raise HTTPException(status_code=404, detail="Questions for this quiz not found.")
+    
+    questions_map = {UUID(q["id"]): q for q in questions_res.data}
+
+    # 3. Calculate score and store individual answers
+    score = 0
+    total_questions = len(questions_map)
+    answers_to_insert = []
+
+    for q_id_str, user_answer in payload.user_answers.items():
+        q_id = UUID(q_id_str)
+        question = questions_map.get(q_id)
+
+        if not question:
+            # This should ideally not happen if frontend sends valid question IDs
+            continue
+
+        is_correct = False
+        # For multiple choice and true/false, we compare answers.
+        if question["type"] in ["mcq", "true_false"]:
+            # Normalize both the user's answer and the correct answer for a reliable, case-insensitive comparison.
+            user_answer_norm = str(user_answer or "").lower().strip()
+            correct_answer_norm = str(question.get("answer") or "").lower().strip()
+            
+            if user_answer_norm == correct_answer_norm:
+                score += 1
+                is_correct = True
+        # For essay questions, is_correct will be null, and score will be 0 initially (manual grading needed).
+
+        answers_to_insert.append({
+            "result_id": str(payload.result_id),
+            "question_id": str(q_id),
+            "user_id": user_id,
+            "answer": user_answer,
+            "is_correct": is_correct if question["type"] in ["mcq", "true_false"] else None,
+            "attempt_number": attempt_number # Store attempt number with answers
+        })
+    
+    if answers_to_insert:
+        sb.table("quiz_answers").insert(answers_to_insert).execute()
+
+    # 4. Update the results table
+    update_data = {
+        "score": score,
+        "total": total_questions,
+        "ended_at": datetime.now(timezone.utc).isoformat()
+    }
+    print(f"DEBUG: Attempting to update result {payload.result_id} with data: {update_data}")
+    try:
+        # The .execute() method on Supabase client v2 raises an exception on failure,
+        # so we don't need to check for an 'error' attribute anymore.
+        update_res = sb.table("results").update(update_data).eq("id", str(payload.result_id)).execute()
+        print(f"DEBUG: Update response data: {update_res.data}")
+        print(f"DEBUG: Quiz result {payload.result_id} successfully updated with ended_at: {update_data['ended_at']}")
+    except Exception as e:
+        # This block will now catch API errors from the Supabase client as well as other exceptions.
+        print(f"ERROR: Exception during result update for {payload.result_id}: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"An error occurred during quiz result update: {str(e)}")
+
+    return {"message": "Quiz submitted successfully", "score": score, "total": total_questions}
+
+@router.post("/{quiz_id}/cancel", status_code=status.HTTP_200_OK)
+async def cancel_quiz_attempt(
+    quiz_id: UUID,
+    payload: QuizCancelIn,
+    sb: Client = Depends(get_supabase_admin), # Use admin client to update result
+    current_student: dict = Depends(get_current_student_user),
+    is_member: bool = Depends(verify_quiz_membership)
+):
+    """Cancels an ongoing quiz attempt, marking it as ended with a 'cancelled' status."""
+    user_id = current_student.get("id")
+
+    # 1. Verify the result entry and that it belongs to the user and is not yet ended
+    result_res = sb.table("results").select("id, quiz_id, user_id, ended_at")\
+        .eq("id", str(payload.result_id))\
+        .eq("quiz_id", str(quiz_id))\
+        .eq("user_id", user_id)\
+        .single()\
+        .execute()
+
+    if not result_res.data:
+        raise HTTPException(status_code=404, detail="Quiz attempt not found or does not belong to user.")
+    
+    result_data = result_res.data
+    if result_data.get("ended_at"):
+        raise HTTPException(status_code=400, detail="Quiz has already been submitted or cancelled.")
+
+    # 2. Update the results table to mark as cancelled
+    update_data = {
+        "ended_at": datetime.now(timezone.utc).isoformat(),
+        "status": "cancelled" # Add a status column to your results table if you want to differentiate
+    }
+    
+    try:
+        update_res = sb.table("results").update(update_data).eq("id", str(payload.result_id)).execute()
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"An error occurred during quiz cancellation: {str(e)}")
+
+    return {"message": "Quiz attempt cancelled successfully"}
+
+@router.post("/{quiz_id}/start", status_code=status.HTTP_200_OK, response_model=QuizAttemptStartOut)
+async def start_quiz_attempt(
+    quiz_id: UUID,
+    sb: Client = Depends(get_supabase_admin), # Use admin client to create result
+    current_student: dict = Depends(get_current_student_user),
+    is_member: bool = Depends(verify_quiz_membership) # Ensure student is member of class
+):
+    """
+    Starts a new quiz attempt. An attempt is only counted upon submission,
+    so this logic checks against the number of *submitted* quizzes.
+    """
+    user_id = current_student.get("id")
+    print(f"DEBUG: start_quiz_attempt called for user_id: {user_id}, quiz_id: {quiz_id}")
+
+    # 1. Check if there's an existing unfinished attempt.
+    # The frontend should prevent this, but it's a good server-side safeguard.
+    existing_result_res = sb.table("results").select("id")\
+        .eq("user_id", user_id)\
+        .eq("quiz_id", str(quiz_id))\
+        .is_("ended_at", None)\
+        .limit(1)\
+        .execute()
+    
+    if existing_result_res.data:
+        raise HTTPException(status_code=400, detail="An unfinished quiz attempt already exists. Please resume or cancel it.")
+
+    # 2. Get max_attempts from the quiz
+    quiz_res = sb.table("quizzes").select("max_attempts").eq("id", str(quiz_id)).single().execute()
+    if not quiz_res.data:
+        raise HTTPException(status_code=404, detail="Quiz not found.")
+    max_attempts = quiz_res.data.get('max_attempts') or 1 # Default to 1 if not set
+
+    # 3. Count the number of *completed* attempts for this user and quiz.
+    # A completed attempt is one that has an 'ended_at' timestamp.
+    completed_attempts_res = sb.table("results").select("id", count="exact")\
+        .eq("quiz_id", str(quiz_id))\
+        .eq("user_id", user_id)\
+        .not_.is_("ended_at", None)\
+        .execute()
+    
+    completed_attempts_count = completed_attempts_res.count or 0
+    
+    if completed_attempts_count >= max_attempts:
+        raise HTTPException(status_code=403, detail=f"Maximum attempt limit ({max_attempts}) for this quiz has been reached.")
+
+    # 4. The new attempt number is the number of completed attempts + 1.
+    current_attempt_number = completed_attempts_count + 1
+
+    # 5. Create a new result entry for the new attempt.
+    new_result_data = {
+        "quiz_id": str(quiz_id),
+        "user_id": user_id,
+        "attempt_number": current_attempt_number,
+        "started_at": datetime.now().astimezone().isoformat(),
+        "status": "in_progress" # Explicitly set status
+    }
+    new_result_res = sb.table("results").insert(new_result_data).execute()
+    if not new_result_res.data:
+        raise HTTPException(status_code=500, detail="Failed to create new quiz attempt record.")
+    
+    new_result = new_result_res.data[0]
+    print(f"DEBUG: New quiz attempt started: result_id={new_result['id']}, attempt_number={current_attempt_number}")
+    
+    return {
+        "result_id": UUID(new_result['id']),
+        "started_at": datetime.fromisoformat(new_result['started_at']),
+        "attempt_number": current_attempt_number
+    }

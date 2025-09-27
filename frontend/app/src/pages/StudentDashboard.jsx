@@ -301,6 +301,7 @@ function MaterialsTab({ classId }) {
 
 // Quizzes Tab Component
 function QuizzesTab({ classId }) {
+  const navigate = useNavigate();
   const [quizzes, setQuizzes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -312,6 +313,10 @@ function QuizzesTab({ classId }) {
       .catch(() => setError("Failed to load quizzes."))
       .finally(() => setLoading(false));
   }, [classId]);
+
+  const handleOpenQuiz = (quizId) => {
+    navigate(`/student/quiz/${quizId}`);
+  };
 
   const getQuizAvailability = (quiz) => {
     if (!quiz.is_active) {
@@ -327,7 +332,7 @@ function QuizzesTab({ classId }) {
     if (until && now > until) {
       return { text: 'Expired', disabled: true, style: 'bg-red-500 text-white cursor-not-allowed' };
     }
-    return { text: 'Start Quiz', disabled: false, style: 'bg-blue-600 text-white hover:bg-blue-700' };
+    return { text: 'Open Quiz', disabled: false, style: 'bg-blue-600 text-white hover:bg-blue-700' };
   };
 
   if (loading) return <p>Loading quizzes...</p>;
@@ -360,10 +365,13 @@ function QuizzesTab({ classId }) {
                     <span>{availability.text}</span>
                   </div>
                 ) : (
-                  <Link to={`/student/quiz/${quiz.id}`} className={`py-2 px-4 rounded-full flex items-center gap-2 transition-colors text-sm ${availability.style}`}>
+                  <button
+                    onClick={() => handleOpenQuiz(quiz.id)}
+                    className={`py-2 px-4 rounded-full flex items-center gap-2 transition-colors text-sm ${availability.style}`}
+                  >
                     <PlayCircle size={18} />
                     <span>{availability.text}</span>
-                  </Link>
+                  </button>
                 )}
               </li>
             );

@@ -175,10 +175,52 @@ def unarchive_class(
 
     # Update the is_archived flag to False
     updated_class_res = db.table("classes").update({"is_archived": False}).eq("id", str(class_id)).execute()
-    if not updated_class_res.data:
-        raise HTTPException(status_code=500, detail="Failed to unarchive class.")
-        
     return updated_class_res.data[0]
+
+@router.patch("/{class_id}/reset-code", status_code=status.HTTP_200_OK, response_model=ClassResponse, summary="Reset a class code")
+def reset_class_code(
+    class_id: UUID,
+    user: dict = Depends(get_current_user),
+    db: supabase.client.Client = Depends(get_supabase_admin)
+):
+    """Generates a new, unique 6-character alphanumeric code for a class. Only the user who created the class can reset its code."""
+    user_id = user.get("id")
+    
+    # Verify the user is the creator of the class
+    class_res = db.table("classes").select("id, created_by").eq("id", str(class_id)).single().execute()
+    if not class_res.data:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Class not found.")
+    if str(class_res.data["created_by"]) != str(user_id):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only the class creator can reset its code.")
+
+    try:
+        # Generate a unique 6-character alphanumeric class code
+        import random
+        import string
+        while True:
+            new_code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
+            # Check if the generated code already exists
+            check = db.table("classes").select("id").eq("class_code", new_code).execute()
+            if not check.data:
+                break
+        
+        # Update the class_code
+        update_res = db.table("classes").update({"class_code": new_code}).eq("id", str(class_id)).execute()
+        
+        # Fetch the updated class data
+        updated_class_res = db.table("classes").select("*").eq("id", str(class_id)).single().execute()
+        if not updated_class_res.data:
+            raise HTTPException(status_code=500, detail="Failed to retrieve updated class data.")
+
+        return updated_class_res.data
+
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        import traceback
+        print(f"Error resetting class code: {e}")
+        print(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/me", response_model=List[ClassResponse], summary="Get all classes for the current user")
 def get_my_classes(

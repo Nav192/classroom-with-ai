@@ -23,7 +23,8 @@ def get_supabase_admin() -> Client:
     key: str = settings.SUPABASE_SERVICE_KEY
     return create_client(url, key)
 
-def get_current_user(token: str = Depends(oAuth2_scheme), sb: Client = Depends(get_supabase)):
+def get_current_user(token: str = Depends(oAuth2_scheme), sb_admin: Client =
+  Depends(get_supabase_admin)):
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
@@ -37,7 +38,7 @@ def get_current_user(token: str = Depends(oAuth2_scheme), sb: Client = Depends(g
         if user_id is None:
             raise credentials_exception
 
-        response = sb.table("profiles").select("*").eq("id", user_id).execute()
+        response = sb_admin.table("profiles").select("*").eq("id", user_id).execute()
         if not response.data:
             raise credentials_exception
         
@@ -74,14 +75,30 @@ def get_current_student_user(current_user: dict = Depends(get_current_user)):
     return current_user
 
 def verify_class_membership(
-    class_id: UUID,
+    class_id: Optional[UUID] = None,
+    quiz_id: Optional[UUID] = None,
     user: dict = Depends(get_current_user),
     sb_admin: Client = Depends(get_supabase_admin),
 ):
     user_id = user.get("id")
+    
+    if not class_id and not quiz_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Either class_id or quiz_id must be provided.")
+
+    target_class_id = class_id
+    if quiz_id:
+        # If quiz_id is provided, fetch class_id from the quiz
+        quiz_res = sb_admin.table("quizzes").select("class_id").eq("id", str(quiz_id)).single().execute()
+        if not quiz_res.data:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Quiz not found.")
+        target_class_id = quiz_res.data['class_id']
+
+    if not target_class_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Class not found for the given quiz.")
+
     try:
-        member = sb_admin.table("class_members").select("id").eq("class_id", str(class_id)).eq("user_id", user_id).execute().data
-        creator = sb_admin.table("classes").select("id").eq("id", str(class_id)).eq("created_by", user_id).execute().data
+        member = sb_admin.table("class_members").select("id").eq("class_id", str(target_class_id)).eq("user_id", user_id).execute().data
+        creator = sb_admin.table("classes").select("id").eq("id", str(target_class_id)).eq("created_by", user_id).execute().data
 
         if not member and not creator:
             raise HTTPException(
@@ -94,3 +111,10 @@ def verify_class_membership(
             detail=f"Error verifying class membership: {str(e)}"
         )
     return True
+
+def verify_quiz_membership(
+    quiz_id: UUID,
+    user: dict = Depends(get_current_user),
+    sb_admin: Client = Depends(get_supabase_admin),
+):
+    return verify_class_membership(quiz_id=quiz_id, user=user, sb_admin=sb_admin)

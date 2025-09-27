@@ -200,22 +200,7 @@ def list_all_classes(sb: Client = Depends(get_supabase_admin)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.patch("/classes/{class_id}/reset-code", response_model=ClassAdminResponse, summary="Reset a class code")
-def reset_class_code(class_id: UUID, sb: Client = Depends(get_supabase_admin)):
-    """Generates a new, unique 6-character alphanumeric code for a class."""
-    try:
-        while True:
-            new_code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
-            check = sb.table("classes").select("id").eq("class_code", new_code).execute()
-            if not check.data:
-                break
-        
-        response = sb.table("classes").update({"class_code": new_code}).eq("id", str(class_id)).select("*").single().execute()
-        if not response.data:
-            raise HTTPException(status_code=404, detail="Class not found.")
-        return response.data
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+
 
 @router.delete("/classes/{class_id}", status_code=status.HTTP_204_NO_CONTENT, summary="Delete a class")
 def delete_class(class_id: UUID, sb: Client = Depends(get_supabase_admin)):

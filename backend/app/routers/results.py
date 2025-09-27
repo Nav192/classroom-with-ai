@@ -156,6 +156,18 @@ async def submit_quiz(
     else:
         print("No answers to insert for quiz result.")
 
+    # 6. Delete checkpoints for this quiz and student
+    try:
+        sb_admin.table("quiz_checkpoints").delete()\
+            .eq("user_id", str(student_id))\
+            .eq("quiz_id", str(payload.quiz_id))\
+            .eq("attempt_number", current_attempt_number)\
+            .execute()
+        print(f"DEBUG: Checkpoints cleared for user {student_id}, quiz {payload.quiz_id}, attempt {current_attempt_number}")
+    except Exception as e:
+        print(f"WARNING: Failed to clear checkpoints for user {student_id}, quiz {payload.quiz_id}, attempt {current_attempt_number}: {e}")
+        # Do not raise HTTPException, as checkpoint clearing is secondary to quiz submission
+
     return new_result
 
 
@@ -289,7 +301,7 @@ def grade_essay_answer(
 @router.post("/cheating-log", status_code=status.HTTP_204_NO_CONTENT)
 def log_cheating_event(
     payload: CheatingLogRequest,
-    sb: Client = Depends(get_supabase),
+    sb: Client = Depends(get_supabase_admin),
     current_user: dict = Depends(get_current_user),
 ):
     """Logs a potential cheating event."""
