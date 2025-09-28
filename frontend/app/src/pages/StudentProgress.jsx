@@ -1,107 +1,187 @@
-import { useEffect, useState } from "react";
-import { useLocation } from "react-router-dom";
-import api from "../services/api";
+import React, { useState, useEffect } from 'react';
+import { useLocation, Link } from 'react-router-dom';
+import api from '../services/api';
+import { 
+    Box, 
+    Typography, 
+    CircularProgress, 
+    Alert, 
+    Table, 
+    TableBody, 
+    TableCell, 
+    TableContainer, 
+    TableHead, 
+    TableRow, 
+    Paper, 
+    Collapse, 
+    IconButton, 
+    Button 
+} from '@mui/material';
+import { KeyboardArrowDown, KeyboardArrowUp } from '@mui/icons-material';
 
-export default function StudentProgress() {
-  const [students, setStudents] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-  const location = useLocation();
-  const searchParams = new URLSearchParams(location.search);
-  const classId = searchParams.get("classId");
-  const className = searchParams.get("className");
+const StudentRow = ({ student, classId }) => {
+    const [open, setOpen] = useState(false);
+    const [results, setResults] = useState([]);
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState('');
 
-  useEffect(() => {
-    if (!classId) {
-      setError("No class ID provided.");
-      setLoading(false);
-      return;
-    }
-
-    const fetchStudentProgress = async () => {
-      try {
-        setLoading(true);
-        const studentsRes = await api.get(`/progress/class/${classId}/students`);
-        setStudents(studentsRes.data);
-      } catch (err) {
-        setError(
-          err.response?.data?.detail || "Failed to load student progress."
-        );
-      } finally {
-        setLoading(false);
-      }
+    const fetchStudentResults = async () => {
+        if (results.length > 0) return; // Don't refetch
+        try {
+            setLoading(true);
+            const res = await api.get(`/api/results/class/${classId}/student/${student.user_id}`);
+            setResults(res.data || []);
+            setError('');
+        } catch (err) {
+            setError(err.response?.data?.detail || 'Failed to load quiz results.');
+        } finally {
+            setLoading(false);
+        }
     };
 
-    fetchStudentProgress();
-  }, [classId]);
+    const handleToggle = () => {
+        setOpen(!open);
+        if (!open) {
+            fetchStudentResults();
+        }
+    };
 
-  if (loading) {
-    return <div className="p-6">Loading student progress...</div>;
-  }
+    return (
+        <React.Fragment>
+            <TableRow sx={{ '& > *': { borderBottom: 'unset' } }}>
+                <TableCell>
+                    <IconButton aria-label="expand row" size="small" onClick={handleToggle}>
+                        {open ? <KeyboardArrowUp /> : <KeyboardArrowDown />}
+                    </IconButton>
+                </TableCell>
+                <TableCell component="th" scope="row">{student.username}</TableCell>
+                <TableCell>{student.email}</TableCell>
+                <TableCell align="right">{student.materials_completed}</TableCell>
+                <TableCell align="right">{student.quizzes_attempted}</TableCell>
+                <TableCell align="right">{student.average_score?.toFixed(2) ?? 'N/A'}%</TableCell>
+            </TableRow>
+            <TableRow>
+                <TableCell style={{ paddingBottom: 0, paddingTop: 0 }} colSpan={6}>
+                    <Collapse in={open} timeout="auto" unmountOnExit>
+                        <Box sx={{ margin: 1 }}>
+                            <Typography variant="h6" gutterBottom component="div">
+                                Quiz History
+                            </Typography>
+                            {loading && <CircularProgress size={24} />}
+                            {error && <Alert severity="error" sx={{ mt: 1 }}>{error}</Alert>}
+                            {!loading && !error && (
+                                <Table size="small" aria-label="quiz results">
+                                    <TableHead>
+                                        <TableRow>
+                                            <TableCell>Quiz Title</TableCell>
+                                            <TableCell>Score</TableCell>
+                                            <TableCell>Submitted At</TableCell>
+                                            <TableCell>Action</TableCell>
+                                        </TableRow>
+                                    </TableHead>
+                                    <TableBody>
+                                        {results.length > 0 ? results.map((result) => (
+                                            <TableRow key={result.id}>
+                                                <TableCell>{result.quiz_title || result.quiz_id}</TableCell>
+                                                <TableCell>{result.score} / {result.total}</TableCell>
+                                                <TableCell>{new Date(result.created_at).toLocaleString()}</TableCell>
+                                                <TableCell>
+                                                    <Button 
+                                                        variant="outlined" 
+                                                        size="small"
+                                                        component={Link} 
+                                                        to={`/results/${result.id}`}
+                                                    >
+                                                        View Details
+                                                    </Button>
+                                                </TableCell>
+                                            </TableRow>
+                                        )) : (
+                                            <TableRow>
+                                                <TableCell colSpan={4}>No quiz results found for this student.</TableCell>
+                                            </TableRow>
+                                        )}
+                                    </TableBody>
+                                </Table>
+                            )}
+                        </Box>
+                    </Collapse>
+                </TableCell>
+            </TableRow>
+        </React.Fragment>
+    );
+};
 
-  if (error) {
-    return <div className="p-6 text-destructive">{error}</div>;
-  }
+export default function StudentProgress() {
+    const [students, setStudents] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState('');
+    const location = useLocation();
+    const searchParams = new URLSearchParams(location.search);
+    const classId = searchParams.get('classId');
+    const className = searchParams.get('className');
 
-  return (
-    <div className="space-y-6">
-      <header>
-        <h1 className="text-3xl font-bold">
-          Student Progress: {className}
-        </h1>
-      </header>
-      <div className="bg-card text-card-foreground rounded-lg shadow-md border border-border p-6">
-        {students.length > 0 ? (
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-border">
-              <thead className="bg-muted/50">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                    Student Name
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                    Email
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                    Materials Completed
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                    Quizzes Attempted
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                    Average Score
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="bg-card divide-y divide-border">
-                {students.map((student) => (
-                  <tr key={student.user_id}>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-foreground">
-                      {student.username}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-muted-foreground">
-                      {student.email}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-muted-foreground">
-                      {student.materials_completed}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-muted-foreground">
-                      {student.quizzes_attempted}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-muted-foreground">
-                      {student.average_score?.toFixed(2) ?? "N/A"}%
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ) : (
-          <p className="text-muted-foreground text-center py-4">
-            No students in this class yet.
-          </p>
-        )}
-      </div>
-    </div>
-  );
+    useEffect(() => {
+        if (!classId) {
+            setError('No class ID provided in URL.');
+            setLoading(false);
+            return;
+        }
+
+        const fetchStudentProgress = async () => {
+            try {
+                setLoading(true);
+                const studentsRes = await api.get(`/api/progress/class/${classId}/students`);
+                setStudents(studentsRes.data || []);
+                setError('');
+            } catch (err) {
+                setError(err.response?.data?.detail || 'Failed to load student progress.');
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        fetchStudentProgress();
+    }, [classId]);
+
+    if (loading) {
+        return <Box display="flex" justifyContent="center" sx={{ p: 4 }}><CircularProgress /></Box>;
+    }
+
+    if (error) {
+        return <Alert severity="error">{error}</Alert>;
+    }
+
+    return (
+        <Box sx={{ p: 3 }}>
+            <Typography variant="h4" gutterBottom>
+                Student Progress: {className || 'Class'}
+            </Typography>
+            <TableContainer component={Paper}>
+                <Table aria-label="collapsible table">
+                    <TableHead>
+                        <TableRow>
+                            <TableCell />
+                            <TableCell>Student Name</TableCell>
+                            <TableCell>Email</TableCell>
+                            <TableCell align="right">Materials Completed</TableCell>
+                            <TableCell align="right">Quizzes Attempted</TableCell>
+                            <TableCell align="right">Average Score</TableCell>
+                        </TableRow>
+                    </TableHead>
+                    <TableBody>
+                        {students.length > 0 ? (
+                            students.map((student) => (
+                                <StudentRow key={student.user_id} student={student} classId={classId} />
+                            ))
+                        ) : (
+                            <TableRow>
+                                <TableCell colSpan={6} align="center">No students in this class yet.</TableCell>
+                            </TableRow>
+                        )}
+                    </TableBody>
+                </Table>
+            </TableContainer>
+        </Box>
+    );
 }

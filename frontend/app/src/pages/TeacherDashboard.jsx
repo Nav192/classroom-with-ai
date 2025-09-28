@@ -531,9 +531,6 @@ function QuizzesTab({ classId }) {
 
 function QuizCard({ quiz, fetchQuizzes, setError }) {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [isDetailsOpen, setIsDetailsOpen] = useState(false);
-  const [studentDetails, setStudentDetails] = useState([]);
-  const [isLoadingDetails, setIsLoadingDetails] = useState(false);
   const [isActive, setIsActive] = useState(quiz.is_active);
 
   const toLocalISOString = (dateString) => {
@@ -586,24 +583,6 @@ function QuizCard({ quiz, fetchQuizzes, setError }) {
     }
   };
 
-  const handleViewDetails = async () => {
-    const shouldOpen = !isDetailsOpen;
-    setIsDetailsOpen(shouldOpen);
-    if (shouldOpen && studentDetails.length === 0) {
-      setIsLoadingDetails(true);
-      setError("");
-      try {
-        const res = await api.get(`/dashboard/teacher/class/${quiz.class_id}/quiz/${quiz.id}/status`);
-        setStudentDetails(res.data || []);
-      } catch (e) {
-        console.error("Error fetching student quiz statuses:", e);
-        setError("Failed to load student quiz statuses.");
-      } finally {
-        setIsLoadingDetails(false);
-      }
-    }
-  };
-
   const handleDeleteQuiz = async () => {
     if (window.confirm("Are you sure you want to delete this quiz? This action cannot be undone.")) {
       try {
@@ -647,7 +626,13 @@ function QuizCard({ quiz, fetchQuizzes, setError }) {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <button onClick={handleViewDetails} className="bg-blue-100 text-blue-700 px-3 py-1 rounded-md hover:bg-blue-200 text-sm font-medium">{isDetailsOpen ? 'Hide Details' : 'View Details'}</button>
+            <Link 
+                to={`/teacher/class/${quiz.class_id}/quiz/${quiz.id}/submissions`}
+                state={{ quizTitle: quiz.topic }}
+                className="bg-blue-100 text-blue-700 px-3 py-1 rounded-md hover:bg-blue-200 text-sm font-medium"
+            >
+                View Submissions
+            </Link>
           <Link to={`/teacher/quiz/edit/${quiz.id}`} className="p-2 text-gray-500 hover:text-blue-600 transition-colors" title="Edit Quiz"><Pencil size={18} /></Link>
           <button onClick={handleDuplicateQuiz} className="p-2 text-gray-500 hover:text-green-600 transition-colors" title="Duplicate Quiz"><Copy size={18} /></button>
           <button onClick={handleDeleteQuiz} className="p-2 text-gray-500 hover:text-red-600 transition-colors" title="Delete Quiz"><Trash2 size={18} /></button>
@@ -661,44 +646,6 @@ function QuizCard({ quiz, fetchQuizzes, setError }) {
         </div>
         <button onClick={() => setIsSettingsOpen(!isSettingsOpen)} className="bg-gray-100 text-gray-700 px-3 py-1 rounded-md hover:bg-gray-200 text-sm font-medium">{isSettingsOpen ? 'Hide Settings' : 'Schedule'}</button>
       </div>
-
-      {/* Collapsible Student Details Section */}
-      {isDetailsOpen && (
-        <div className="mt-4 pt-4 border-t border-gray-200">
-          {isLoadingDetails ? <p>Loading details...</p> : (
-            studentDetails.length > 0 ? (
-              <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200">
-                  <thead className="bg-gray-100">
-                    <tr>
-                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Student</th>
-                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Score</th>
-                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Attempts</th>
-                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Overall Average</th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
-                    {studentDetails.map((status) => (
-                      <tr key={status.student_id}>
-                        <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-900">{status.username}</td>
-                        <td className="px-4 py-3 whitespace-nowrap text-sm">
-                          <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${status.status === 'Completed' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
-                            {status.status}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">{status.score !== null ? `${status.score}` : 'N/A'}</td>
-                        <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">{status.status === 'Completed' ? `${status.attempts_taken} / ${status.max_attempts}` : 'N/A'}</td>
-                        <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">{status.overall_weighted_average_score !== null ? `${status.overall_weighted_average_score}%` : 'N/A'}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            ) : <p className="text-gray-500 text-center py-5">No students in this class to display.</p>
-          )}
-        </div>
-      )}
 
       {/* Collapsible Settings Section */}
       {isSettingsOpen && (

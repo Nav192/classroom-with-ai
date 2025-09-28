@@ -362,4 +362,11 @@ ADD COLUMN weight INTEGER DEFAULT 100 NOT NULL;
 
 DROP TABLE public.quiz_weights;
 
+1 CREATE POLICY "Allow full access for postgres"                                               │
+ │    2 ON public.quiz_attempts                                                                      │
+ │    3 FOR ALL                                                                                      │
+ │    4 TO postgres                                                                                  │
+ │    5 USING (true)                                                                                 │
+ │    6 WITH CHECK (true);
+
 

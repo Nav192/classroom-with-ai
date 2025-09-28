@@ -16,6 +16,8 @@ import Progress from "./pages/Progress.jsx";
 import Chat from "./pages/Chat.jsx";
 import StudentProgress from "./pages/StudentProgress.jsx";
 import ClassAverageScores from "./pages/ClassAverageScores.jsx";
+import QuizSubmissions from "./pages/QuizSubmissions.jsx";
+import QuizResultDetails from "./pages/QuizResultDetails.jsx";
 
 export default function App() {
   return (
@@ -36,12 +38,14 @@ export default function App() {
             <Route element={<ProtectedRoute allowedRoles={["student"]} />}>
               <Route path="/student/dashboard" element={<StudentDashboard />} />
               <Route path="/student/quiz/:quizId" element={<QuizTaker />} />
+              <Route path="/student/results/:resultId" element={<QuizResultDetails />} />
             </Route>
             <Route element={<ProtectedRoute allowedRoles={["teacher"]} />}>
               <Route path="/teacher/dashboard" element={<TeacherDashboard />} />
               <Route path="/teacher/quiz/new" element={<QuizBuilder />} />
               <Route path="/teacher/quiz/edit/:quizId" element={<QuizBuilder />} />
               <Route path="/teacher/class/:classId/overall-averages" element={<ClassAverageScores />} />
+              <Route path="/teacher/class/:classId/quiz/:quizId/submissions" element={<QuizSubmissions />} />
               <Route
                 path="/teacher/student-progress"
                 element={<StudentProgress />}
@@ -58,6 +62,7 @@ export default function App() {
               <Route path="/materials" element={<Materials />} />
               <Route path="/quizzes" element={<Quizzes />} />
               <Route path="/results" element={<ResultsPage />} />
+              <Route path="/results/:resultId" element={<QuizResultDetails />} />
               <Route path="/progress" element={<Progress />} />
             </Route>
             <Route

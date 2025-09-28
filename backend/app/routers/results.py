@@ -52,7 +52,9 @@ class ResultOut(BaseModel):
     started_at: datetime
     ended_at: datetime
     created_at: datetime
-    cheating_logs: List[CheatingLogOut] = [] # Added for cheating detection
+    status: str
+    cheating_logs: List[CheatingLogOut] = []
+    username: Optional[str] = None
     class Config:
         from_attributes = True
 
@@ -76,7 +78,119 @@ class LatestQuizScoreResponse(BaseModel):
     latest_attempt_number: Optional[int] = None
     latest_submission_time: Optional[datetime] = None
 
+class QuestionDetailOut(BaseModel):
+    id: UUID
+    question_text: str
+    options: Optional[List[str]]
+    question_type: str
+
+class ResultAnswerDetailOut(BaseModel):
+    question: QuestionDetailOut
+    submitted_answer: Optional[str]
+    correct_answer: Optional[str]
+    is_correct: Optional[bool]
+
+class QuizResultDetailOut(BaseModel):
+    quiz_id: UUID
+    quiz_title: str
+    result_id: UUID
+    user_id: UUID
+    score: int
+    total_questions: int
+    submitted_at: datetime
+    max_attempts: Optional[int] = None
+    attempts_taken: Optional[int] = None
+    details: List[ResultAnswerDetailOut]
+
 # --- Endpoints ---
+
+@router.get("/{result_id}/details", response_model=QuizResultDetailOut)
+def get_quiz_result_details(
+    result_id: UUID,
+    current_user: dict = Depends(get_current_user),
+    sb: Client = Depends(get_supabase),
+):
+    """
+    Fetches the detailed results of a specific quiz submission, including
+    each question, the user's answer, the correct answer, and correctness.
+    Accessible by the student who took the quiz or a teacher of the class.
+    """
+    # 1. Fetch the primary result record
+    result_res = sb.table("results").select("quiz_id, user_id, score, total, created_at").eq("id", str(result_id)).single().execute()
+    if not result_res.data:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Quiz result not found.")
+    
+    result_data = result_res.data
+    user_id = current_user.get("id")
+    user_role = current_user.get("user_metadata", {}).get("role")
+
+    # 2. Fetch quiz details for max_attempts and authorization
+    quiz_res = sb.table("quizzes").select("id, topic, user_id, class_id, max_attempts").eq("id", result_data['quiz_id']).single().execute()
+    if not quiz_res.data:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Associated quiz not found.")
+    
+    quiz_data = quiz_res.data
+    max_attempts = quiz_data.get('max_attempts')
+
+    # 3. Count attempts taken by the user for this quiz
+    attempts_taken_res = sb.table("results").select("id", count="exact").eq("quiz_id", quiz_data['id']).eq("user_id", user_id).execute()
+    attempts_taken = attempts_taken_res.count
+
+    # 4. Authorization Check
+    is_student_owner = str(result_data['user_id']) == str(user_id)
+    is_teacher_of_class = False
+    if user_role == 'teacher':
+        if quiz_data['class_id']:
+            member_res = sb.table("classes").select("id").eq("id", quiz_data['class_id']).eq("created_by", user_id).single().execute()
+            if member_res.data:
+                is_teacher_of_class = True
+
+    if not is_student_owner and not is_teacher_of_class:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You do not have permission to view these results.")
+
+    # 5. Fetch all questions and submitted answers for the quiz
+    questions_res = sb.table("questions").select("*").eq("quiz_id", quiz_data['id']).execute()
+    if not questions_res.data:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Questions for this quiz could not be found.")
+    
+    submitted_answers_res = sb.table("quiz_answers").select("*").eq("result_id", str(result_id)).execute()
+    
+    # Map submitted answers by question_id for easy lookup
+    submitted_answers_map = {str(ans['question_id']): ans for ans in submitted_answers_res.data}
+
+    # 6. Combine data into the detailed response
+    detailed_results = []
+    for question in questions_res.data:
+        question_id_str = str(question['id'])
+        submitted = submitted_answers_map.get(question_id_str)
+
+        detailed_results.append(
+            ResultAnswerDetailOut(
+                question=QuestionDetailOut(
+                    id=question['id'],
+                    question_text=question['text'],
+                    options=question.get('options'),
+                    question_type=question['type']
+                ),
+                submitted_answer=submitted['answer'] if submitted else None,
+                correct_answer=question.get('answer'),
+                is_correct=submitted['is_correct'] if submitted else None
+            )
+        )
+
+    return QuizResultDetailOut(
+        quiz_id=quiz_data['id'],
+        quiz_title=quiz_data['topic'],
+        result_id=result_id,
+        user_id=result_data['user_id'],
+        score=result_data['score'],
+        total_questions=result_data['total'],
+        submitted_at=result_data['created_at'],
+        max_attempts=max_attempts,
+        attempts_taken=attempts_taken,
+        details=detailed_results,
+    )
+
 
 @router.post("/submit", response_model=ResultOut, status_code=status.HTTP_201_CREATED)
 async def submit_quiz(
@@ -119,12 +233,16 @@ async def submit_quiz(
 
     for submitted_answer in payload.answers:
         question_data = quiz_questions.get(str(submitted_answer.question_id))
+        print(f"DEBUG: Submitted Answer: {submitted_answer}")
+        print(f"DEBUG: Question Data for submitted answer: {question_data}")
         if not question_data:
+            print(f"DEBUG: No question data found for question ID: {submitted_answer.question_id}")
             continue
 
         is_correct = None
         if question_data['type'] in ['mcq', 'true_false']:
             is_correct = str(question_data['answer']).strip().lower() == str(submitted_answer.response).strip().lower()
+            print(f"DEBUG: Is Correct: {is_correct}")
             if is_correct:
                 score += 1
 
@@ -146,6 +264,7 @@ async def submit_quiz(
             "attempt_number": current_attempt_number,
             "started_at": payload.started_at.isoformat(),
             "ended_at": datetime.now(timezone.utc).isoformat(),
+            "status": "completed",
         }).execute()
 
         if not result_insert_res.data:
@@ -232,19 +351,54 @@ def get_results_for_quiz_in_class(
     sb: Client = Depends(get_supabase),
     current_teacher: dict = Depends(get_current_teacher_user),
 ):
-    """(For Teachers) Get all results for a specific quiz in a class."""
-    quiz_check = sb.table("quizzes").select("id").eq("id", str(quiz_id)).eq("class_id", str(class_id)).single().execute()
+    """(For Teachers) Get all results for a specific quiz in a class, including student info."""
+    quiz_check = sb.table("quizzes").select("id, topic").eq("id", str(quiz_id)).eq("class_id", str(class_id)).single().execute()
     if not quiz_check.data:
         raise HTTPException(status_code=404, detail="Quiz not found in this class.")
 
-    results_data = sb.table("results").select("*").eq("quiz_id", str(quiz_id)).order("created_at", desc=True).execute().data or []
+    results_res = sb.table("results").select("*").eq("quiz_id", str(quiz_id)).order("created_at", desc=True).execute()
+    results_data = results_res.data or []
     
-    # Fetch cheating logs for each result
-    for result in results_data:
-        cheating_logs_res = sb.table("cheating_logs").select("*").eq("result_id", result['id']).order("timestamp", desc=True).execute()
-        result['cheating_logs'] = cheating_logs_res.data or []
+    if not results_data:
+        return []
 
-    return results_data
+    # Get user IDs from results
+    user_ids = [res['user_id'] for res in results_data]
+    
+    # Fetch user details from profiles table which has appropriate RLS
+    users_res = sb.table("profiles").select("id, username").in_("id", user_ids).execute()
+    users_map = {str(user['id']): user for user in (users_res.data or [])}
+
+    # Combine data
+    response_data = []
+    for result in results_data:
+        user_info = users_map.get(str(result['user_id']))
+        username = 'Unknown User'
+        if user_info:
+            username = user_info.get('username') or 'Unknown User'
+        
+        # Fetch cheating logs for each result
+        cheating_logs_res = sb.table("cheating_logs").select("*").eq("result_id", result['id']).order("timestamp", desc=True).execute()
+        cheating_logs = cheating_logs_res.data or []
+
+        response_data.append(
+            ResultOut(
+                id=result['id'],
+                quiz_id=result['quiz_id'],
+                user_id=result['user_id'],
+                score=result['score'],
+                total=result['total'],
+                attempt_number=result['attempt_number'],
+                started_at=result['started_at'],
+                ended_at=result['ended_at'],
+                created_at=result['created_at'],
+                cheating_logs=cheating_logs,
+                username=username,
+                status=result['status'],
+            )
+        )
+
+    return response_data
 
 @router.get("/class/{class_id}/student/{student_id}", response_model=List[ResultOut], dependencies=[Depends(verify_class_membership)])
 def get_results_for_student_in_class(

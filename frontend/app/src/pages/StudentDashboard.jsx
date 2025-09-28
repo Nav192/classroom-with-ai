@@ -149,6 +149,10 @@ function DashboardHeader({ username, onClassJoined }) {
   );
 }
 
+import StudentClassResults from './StudentClassResults.jsx';
+
+// ... (rest of the file is the same until ClassTabs)
+
 // Tabs Component
 function ClassTabs({ selectedClass, onBackToClassSelection }) {
   const [activeTab, setActiveTab] = useState("overview");
@@ -157,6 +161,7 @@ function ClassTabs({ selectedClass, onBackToClassSelection }) {
     { id: "overview", label: "Overview" },
     { id: "materials", label: "Materials" },
     { id: "quizzes", label: "Quizzes" },
+    { id: "results", label: "Results" },
     { id: "chat", label: "AI Assistant" },
   ];
 
@@ -189,6 +194,7 @@ function ClassTabs({ selectedClass, onBackToClassSelection }) {
         {activeTab === "overview" && <OverviewTab classId={selectedClass.id} />}
         {activeTab === "materials" && <MaterialsTab classId={selectedClass.id} />}
         {activeTab === "quizzes" && <QuizzesTab classId={selectedClass.id} />}
+        {activeTab === "results" && <StudentClassResults classId={selectedClass.id} />}
         {activeTab === "chat" && <ChatTab />}
       </div>
     </div>

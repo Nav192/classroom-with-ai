@@ -36,4 +36,8 @@ api.interceptors.response.use(
 
 export const getOverallStudentAverages = (classId) => api.get(`/dashboard/teacher/class/${classId}/overall_student_averages`);
 
+export const fetchStudentQuizzes = (userId) => api.get(`/student/${userId}/quizzes`);
+export const fetchStudentQuizResults = () => api.get(`/results/history`);
+export const fetchStudentProgress = (userId) => api.get(`/student/${userId}/progress`);
+
 export default api;
