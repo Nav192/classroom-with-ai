@@ -14,6 +14,7 @@ export default function QuizBuilder() {
   const [topic, setTopic] = useState('');
   const [duration, setDuration] = useState(30);
   const [maxAttempts, setMaxAttempts] = useState(2);
+  const [weight, setWeight] = useState(100); // New state for quiz weight
   const [quizType, setQuizType] = useState('mcq');
   const [questions, setQuestions] = useState([{ text: '', options: ['', ''], answer: '' }]);
   const [students, setStudents] = useState([]);
@@ -60,6 +61,7 @@ export default function QuizBuilder() {
           setTopic(quizData.topic);
           setDuration(quizData.duration_minutes);
           setMaxAttempts(quizData.max_attempts || 2);
+          setWeight(quizData.weight || 100); // Set weight from fetched data
           setQuizType(quizData.type);
           setQuestions(quizData.questions.map(q => ({ ...q, id: q.id || undefined })));
           setClassId(quizData.class_id);
@@ -175,6 +177,7 @@ export default function QuizBuilder() {
       type: quizType,
       duration_minutes: parseInt(duration, 10),
       max_attempts: parseInt(maxAttempts, 10),
+      weight: parseInt(weight, 10),
       questions: questions.map(q => ({
         id: q.id || undefined, // Include ID for existing questions
         text: q.text,
@@ -247,10 +250,30 @@ export default function QuizBuilder() {
                     <label className="text-sm font-medium flex items-center gap-2"><Info size={16}/> Class</label>
                     <p className="font-semibold text-sm text-muted-foreground">{className || 'Loading...'}</p>
                 </div>
-                <div className="space-y-2">
-                    <label htmlFor="duration" className="text-sm font-medium">Duration (minutes)</label>
-                    <input type="number" id="duration" value={duration} onChange={e => setDuration(e.target.value)} required min="1" className="w-full px-3 py-2 bg-input border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-primary"/>
-                </div>
+              <div className="mb-4">
+                <label htmlFor="duration_minutes" className="block text-sm font-medium text-gray-700">Durasi Kuis (menit)</label>
+                <input
+                  type="number"
+                  id="duration_minutes"
+                  value={duration}
+                  onChange={e => setDuration(parseInt(e.target.value, 10))}
+                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
+                  required
+                />
+              </div>
+              <div className="mb-4">
+                <label htmlFor="weight" className="block text-sm font-medium text-gray-700">Bobot Kuis (%)</label>
+                <input
+                  type="number"
+                  id="weight"
+                  value={weight}
+                  onChange={e => setWeight(parseInt(e.target.value, 10))}
+                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
+                  min="0"
+                  max="100"
+                  required
+                />
+              </div>
                 <div className="space-y-2">
                     <label htmlFor="maxAttempts" className="text-sm font-medium">Max Attempts</label>
                     <input type="number" id="maxAttempts" value={maxAttempts} onChange={e => setMaxAttempts(e.target.value)} required min="1" className="w-full px-3 py-2 bg-input border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-primary"/>

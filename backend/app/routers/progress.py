@@ -33,6 +33,7 @@ class MyProgressResponse(BaseModel):
     quizzes_attempted: int
     total_quizzes: int
     quizzes_progress_percentage: float
+    weighted_average_quiz_score: float # New field for overall weighted average
     overall_progress_percentage: float
 
 class StudentProgressDetail(BaseModel):
@@ -116,34 +117,62 @@ def get_my_progress_in_class(
     sb: Client = Depends(get_supabase),
     current_user: dict = Depends(get_current_user),
 ):
-    """(For Students) Get personal progress in a specific class."""
     user_id = current_user.get("id")
+    print(f"DEBUG: get_my_progress_in_class called for user_id: {user_id}, class_id: {class_id}")
 
     try:
         materials_in_class = sb.table("materials").select("id", count='exact').eq("class_id", str(class_id)).execute()
         total_materials = materials_in_class.count
-        materials_in_class_ids = [m['id'] for m in materials_in_class.data]
+        materials_in_class_ids = [m['id'] for m in materials_in_class.data or []]
+        print(f"DEBUG: total_materials: {total_materials}, materials_in_class_ids: {materials_in_class_ids}")
 
-        quizzes_in_class = sb.table("quizzes").select("id", count='exact').eq("class_id", str(class_id)).execute()
-        total_quizzes = quizzes_in_class.count
+        quizzes_in_class_res = sb.table("quizzes").select("id, weight").eq("class_id", str(class_id)).execute()
+        class_quiz_weights = {q['id']: q['weight'] for q in quizzes_in_class_res.data or []}
+        total_quizzes = len(class_quiz_weights) # Total quizzes in class
+        class_quiz_ids = list(class_quiz_weights.keys())
+        print(f"DEBUG: total_quizzes: {total_quizzes}, class_quiz_ids: {class_quiz_ids}, class_quiz_weights: {class_quiz_weights}")
 
         # Get user's progress
         mats_completed = 0
         if materials_in_class_ids:
             mats_completed = sb.table("materials_progress").select("id", count='exact').eq("user_id", user_id).eq("status", "completed").in_("material_id", materials_in_class_ids).execute().count
         
-        # This is tricky, we need to count distinct quizzes from results that belong to this class
-        quiz_results = sb.table("results").select("quiz_id").eq("user_id", user_id).execute().data or []
-        attempted_quiz_ids = list(set(r['quiz_id'] for r in quiz_results))
+        # Fetch all results for the current user in this class
+        all_user_quiz_results = sb.table("results").select("quiz_id, score, created_at").eq("user_id", user_id).in_("quiz_id", class_quiz_ids).execute().data or []
+        print(f"DEBUG: all_user_quiz_results: {all_user_quiz_results}")
+
+        # Get the highest score for each quiz
+        highest_scores_per_quiz = {}
+        for result in all_user_quiz_results:
+            quiz_id = result['quiz_id']
+            score = result['score']
+            if quiz_id not in highest_scores_per_quiz or (score is not None and highest_scores_per_quiz[quiz_id]['score'] is not None and score > highest_scores_per_quiz[quiz_id]['score']):
+                highest_scores_per_quiz[quiz_id] = result
         
-        quizzes_attempted = 0
-        if attempted_quiz_ids:
-            quizzes_attempted = sb.table("quizzes").select("id", count='exact').in_("id", attempted_quiz_ids).eq("class_id", str(class_id)).execute().count
+        quizzes_attempted = len(highest_scores_per_quiz)
+        
+        weighted_sum_scores = 0
+        total_weights = 0
+
+        for quiz_id, result in highest_scores_per_quiz.items():
+            score = result['score']
+            weight = class_quiz_weights.get(quiz_id, 0) # Default to 0 if weight not found
+
+            if score is not None:
+                weighted_sum_scores += score * weight
+                total_weights += weight
+        
+        quiz_average_score_for_overall = 0.0 # This will be the weighted average score
+        if total_weights > 0:
+            quiz_average_score_for_overall = weighted_sum_scores / total_weights
 
         mat_progress_percentage = (mats_completed / total_materials * 100) if total_materials > 0 else 0
+        # Quizzes progress percentage for student dashboard should be completion percentage
         quiz_progress_percentage = (quizzes_attempted / total_quizzes * 100) if total_quizzes > 0 else 0
 
-        overall_progress_percentage = round((mat_progress_percentage + quiz_progress_percentage) / 2, 2) if (mat_progress_percentage + quiz_progress_percentage) > 0 else 0
+        # Overall progress percentage combines material completion and weighted quiz average score
+        overall_progress_percentage = round((mat_progress_percentage + quiz_average_score_for_overall) / 2, 2) if (mat_progress_percentage + quiz_average_score_for_overall) > 0 else 0
+        print(f"DEBUG: Final MyProgressResponse values: mat_progress_percentage={mat_progress_percentage}, quiz_progress_percentage={quiz_progress_percentage}, overall_progress_percentage={overall_progress_percentage}")
         return MyProgressResponse(
             class_id=class_id,
             materials_completed=mats_completed,
@@ -152,6 +181,7 @@ def get_my_progress_in_class(
             quizzes_attempted=quizzes_attempted,
             total_quizzes=total_quizzes,
             quizzes_progress_percentage=round(quiz_progress_percentage, 2),
+            weighted_average_quiz_score=round(quiz_average_score_for_overall, 2), # New field
             overall_progress_percentage=overall_progress_percentage
         )
     except Exception as e:
@@ -219,9 +249,11 @@ def get_student_progress_in_class(
         # Fetch all progress data for these students for this class
         materials_in_class_ids = [m['id'] for m in (sb_admin.table("materials").select("id").eq("class_id", str(class_id)).execute().data or [])]
         materials_progress = sb_admin.table("materials_progress").select("user_id, material_id, status").in_("user_id", list(student_id_map.keys())).in_("material_id", materials_in_class_ids).execute().data or []
-        # Get all quiz IDs for the class
-        class_quizzes = sb_admin.table("quizzes").select("id").eq("class_id", str(class_id)).execute().data or []
-        class_quiz_ids = [q['id'] for q in class_quizzes]
+        # Get all quiz IDs and their weights for the class
+        class_quizzes_res = sb_admin.table("quizzes").select("id, weight").eq("class_id", str(class_id)).execute().data or []
+        class_quiz_weights = {q['id']: q['weight'] for q in class_quizzes_res}
+        class_quiz_ids = list(class_quiz_weights.keys())
+        
         quiz_results = sb_admin.table("results").select("user_id, quiz_id, score, total, created_at").in_("user_id", list(student_id_map.keys())).in_("quiz_id", class_quiz_ids).execute().data or []
 
         student_details = []
@@ -230,22 +262,33 @@ def get_student_progress_in_class(
             
             student_quiz_results = [r for r in quiz_results if r['user_id'] == student_id]
             
-            # Get the latest result for each quiz
-            latest_results = {}
-            for result in sorted(student_quiz_results, key=lambda x: x['created_at'], reverse=True):
-                if result['quiz_id'] not in latest_results:
-                    latest_results[result['quiz_id']] = result
+            # Get the highest score for each quiz for the current student
+            highest_scores_for_student = {}
+            for result in student_quiz_results:
+                quiz_id = result['quiz_id']
+                score = result['score']
+                if quiz_id not in highest_scores_for_student or (score is not None and highest_scores_for_student[quiz_id]['score'] is not None and score > highest_scores_for_student[quiz_id]['score']):
+                    highest_scores_for_student[quiz_id] = result
             
-            latest_student_results = list(latest_results.values())
+            highest_student_results = list(highest_scores_for_student.values())
             
-            quizzes_attempted = len(latest_student_results)
+            quizzes_attempted = len(highest_student_results)
             
-            # Calculate quiz average score
-            total_quiz_score = sum(r['score'] for r in latest_student_results)
+            # Calculate weighted average quiz score
+            weighted_sum_scores = 0
+            total_weights = 0
+            for result in highest_student_results:
+                quiz_id_str = result['quiz_id']
+                quiz_score = result['score']
+                quiz_weight = class_quiz_weights.get(quiz_id_str, 100) # Default to 100 if weight not found
+                print(f"DEBUG: Processing result: quiz_id_str={quiz_id_str}, quiz_score={quiz_score}, quiz_weight={quiz_weight}")
+
+                weighted_sum_scores += (quiz_score * quiz_weight)
+                total_weights += quiz_weight
             
             quiz_average_percentage = 0.0 # Default to 0.0 if no quizzes attempted
-            if quizzes_attempted > 0:
-                quiz_average_percentage = total_quiz_score / quizzes_attempted
+            if total_weights > 0:
+                quiz_average_percentage = weighted_sum_scores / total_weights
             
             # Calculate materials progress percentage
             materials_progress_percentage = 0.0

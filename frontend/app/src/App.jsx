@@ -15,6 +15,7 @@ import Quizzes from "./pages/Quizzes.jsx";
 import Progress from "./pages/Progress.jsx";
 import Chat from "./pages/Chat.jsx";
 import StudentProgress from "./pages/StudentProgress.jsx";
+import ClassAverageScores from "./pages/ClassAverageScores.jsx";
 
 export default function App() {
   return (
@@ -40,6 +41,7 @@ export default function App() {
               <Route path="/teacher/dashboard" element={<TeacherDashboard />} />
               <Route path="/teacher/quiz/new" element={<QuizBuilder />} />
               <Route path="/teacher/quiz/edit/:quizId" element={<QuizBuilder />} />
+              <Route path="/teacher/class/:classId/overall-averages" element={<ClassAverageScores />} />
               <Route
                 path="/teacher/student-progress"
                 element={<StudentProgress />}

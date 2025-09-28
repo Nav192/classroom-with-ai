@@ -234,6 +234,11 @@ function OverviewTab({ classId }) {
         <div className="w-full bg-gray-200 rounded-full h-2.5 mt-4">
           <div className="bg-green-600 h-2.5 rounded-full" style={{ width: `${progress.quizzes_progress_percentage}%` }}></div>
         </div>
+        <h3 className="font-semibold text-lg mt-6 mb-4">Overall Weighted Quiz Score</h3>
+        <div className="flex items-center justify-between">
+          <span className="text-3xl font-bold text-purple-600">{progress.weighted_average_quiz_score}%</span>
+          <span className="text-sm text-gray-500">Based on quiz weights</span>
+        </div>
       </div>
     </div>
   );
@@ -360,19 +365,21 @@ function QuizzesTab({ classId }) {
                     </p>
                   )}
                 </div>
-                {availability.disabled ? (
-                  <div className={`py-2 px-4 rounded-full flex items-center gap-2 text-sm ${availability.style}`}>
-                    <span>{availability.text}</span>
-                  </div>
-                ) : (
-                  <button
-                    onClick={() => handleOpenQuiz(quiz.id)}
-                    className={`py-2 px-4 rounded-full flex items-center gap-2 transition-colors text-sm ${availability.style}`}
-                  >
-                    <PlayCircle size={18} />
-                    <span>{availability.text}</span>
-                  </button>
-                )}
+                <div className="flex items-center gap-2">
+                  {availability.disabled ? (
+                    <div className={`py-2 px-4 rounded-full flex items-center gap-2 text-sm ${availability.style}`}>
+                      <span>{availability.text}</span>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => handleOpenQuiz(quiz.id)}
+                      className={`py-2 px-4 rounded-full flex items-center gap-2 transition-colors text-sm ${availability.style}`}
+                    >
+                      <PlayCircle size={18} />
+                      <span>{availability.text}</span>
+                    </button>
+                  )}
+                </div>
               </li>
             );
           })}

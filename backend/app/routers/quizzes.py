@@ -25,6 +25,7 @@ class QuizIn(BaseModel):
     max_attempts: Optional[int] = 2
     questions: List[QuestionIn]
     visible_to: Optional[List[UUID]] = None
+    weight: int = 100
 
 class QuestionOut(QuestionIn):
     id: UUID
@@ -41,6 +42,7 @@ class QuizOut(BaseModel):
     class_id: UUID
     duration_minutes: int
     max_attempts: Optional[int] = None
+    weight: int
     class Config:
         from_attributes = True
 
@@ -116,6 +118,7 @@ def create_quiz(
             "duration_minutes": payload.duration_minutes,
             "max_attempts": payload.max_attempts,
             "user_id": str(teacher_id),
+            "weight": payload.weight,
         }).execute()
         
         if not quiz_res.data:
@@ -163,6 +166,7 @@ def update_quiz(
             "type": payload.type,
             "duration_minutes": payload.duration_minutes,
             "max_attempts": payload.max_attempts,
+            "weight": payload.weight,
         }
         sb_admin.table("quizzes").update(updated_quiz_data).eq("id", str(quiz_id)).execute()
 
@@ -280,20 +284,31 @@ def list_quizzes(
         }
         total_students = len(student_ids)
 
-        # 3. Get all results for the quizzes in this class.
+        # 3. Get all results (including scores) for the quizzes in this class.
         quiz_ids = [q["id"] for q in quizzes_data]
-        results_res = sb.table("results").select("quiz_id, user_id").in_("quiz_id", quiz_ids).execute()
+        results_res = sb.table("results").select("quiz_id, user_id, score").in_("quiz_id", quiz_ids).execute()
         results_data = results_res.data or []
 
-        # 4. Create a map of quiz_id -> set of students who took it
-        takers_map = {}
+        # 4. Create maps for students who took the quiz and for calculating average scores
+        takers_map = {} # quiz_id -> set of student_ids who took it
+        quiz_scores_map = {} # quiz_id -> list of scores
+
         for result in results_data:
             quiz_id_res = result["quiz_id"]
             user_id_res = result["user_id"]
-            if user_id_res in student_ids:  # Only count students
+            score_res = result["score"]
+
+            if user_id_res in student_ids:  # Only consider results from students
+                # For takers_map
                 if quiz_id_res not in takers_map:
                     takers_map[quiz_id_res] = set()
                 takers_map[quiz_id_res].add(user_id_res)
+
+                # For quiz_scores_map (only valid scores)
+                if score_res is not None:
+                    if quiz_id_res not in quiz_scores_map:
+                        quiz_scores_map[quiz_id_res] = []
+                    quiz_scores_map[quiz_id_res].append(score_res)
 
         # 5. Format the final output.
         formatted_quizzes = []
@@ -301,6 +316,9 @@ def list_quizzes(
             quiz_id_item = quiz["id"]
             students_taken_count = len(takers_map.get(quiz_id_item, set()))
             
+            quiz_average_scores = quiz_scores_map.get(quiz_id_item, [])
+            average_score_for_quiz = sum(quiz_average_scores) / len(quiz_average_scores) if quiz_average_scores else None
+
             formatted_quiz = {
                 **quiz,
                 "students_taken": students_taken_count,
@@ -566,15 +584,11 @@ async def submit_quiz(
     questions_map = {UUID(q["id"]): q for q in questions_res.data}
 
     # 3. Calculate score and store individual answers
-    # Fetch class_id from the quiz
-    class_id_res = sb.table("quizzes").select("class_id").eq("id", str(quiz_id)).single().execute()
-    if not class_id_res.data:
-        raise HTTPException(status_code=404, detail="Could not find class for the quiz.")
-    class_id = class_id_res.data['class_id']
-
-    # Fetch quiz weights
-    weights_res = sb.table("quiz_weights").select("*").eq("class_id", class_id).single().execute()
-    weights = weights_res.data if weights_res.data else {"mcq_weight": 1, "true_false_weight": 1, "essay_weight": 0} # Default weights if not set
+    # Fetch quiz details including its weight
+    quiz_details_res = sb.table("quizzes").select("class_id, weight").eq("id", str(quiz_id)).single().execute()
+    if not quiz_details_res.data:
+        raise HTTPException(status_code=404, detail="Could not find quiz details.")
+    quiz_weight = quiz_details_res.data['weight']
 
     mcq_correct = 0
     tf_correct = 0
@@ -611,19 +625,12 @@ async def submit_quiz(
             "attempt_number": attempt_number
         })
 
-    # Calculate weighted score
-    total_weight = weights['mcq_weight'] + weights['true_false_weight'] + weights['essay_weight']
+    # Calculate score based on correct answers
+    total_questions_answered = mcq_total + tf_total
     score = 0
-    
-    if total_weight > 0:
-        mcq_percentage = (mcq_correct / mcq_total) * 100 if mcq_total > 0 else 0
-        tf_percentage = (tf_correct / tf_total) * 100 if tf_total > 0 else 0
-        
-        mcq_weighted_score = mcq_percentage * (weights['mcq_weight'] / total_weight)
-        tf_weighted_score = tf_percentage * (weights['true_false_weight'] / total_weight)
-        
-        # Essay score is handled separately during manual grading, so its initial contribution is 0
-        score = round(mcq_weighted_score + tf_weighted_score)
+    if total_questions_answered > 0:
+        correct_answers = mcq_correct + tf_correct
+        score = round((correct_answers / total_questions_answered) * 100)
 
     if answers_to_insert:
         sb.table("quiz_answers").insert(answers_to_insert).execute()

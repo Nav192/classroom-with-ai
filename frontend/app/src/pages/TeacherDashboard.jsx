@@ -3,7 +3,8 @@ import { useNavigate, Link } from "react-router-dom";
 import { UploadCloud, BookOpen, Plus, Download, LogIn, Users, Trash2, Pencil, RefreshCw, ChevronLeft, Archive, ArchiveRestore, Copy } from "lucide-react";
 import api from "../services/api";
 import CreateClassModal from "../components/CreateClassModal";
-import QuizWeightSettings from "./QuizSettings";
+import ClassAverageScores from "./ClassAverageScores";
+
 
 // Main Dashboard Component
 export default function TeacherDashboard() {
@@ -185,6 +186,7 @@ function ClassTabs({ selectedClass, onDataChange, username, onBackToClassSelecti
     { id: "students", label: "Students" },
     { id: "materials", label: "Materials" },
     { id: "quizzes", label: "Quizzes" },
+    { id: "overall_averages", label: "Overall Averages" },
     { id: "class_management", label: "Class Management" },
   ];
 
@@ -218,6 +220,16 @@ function ClassTabs({ selectedClass, onDataChange, username, onBackToClassSelecti
         {activeTab === "students" && <StudentsTab classId={selectedClass.id} className={selectedClass.class_name} />}
         {activeTab === "materials" && <MaterialsTab classId={selectedClass.id} onDataChange={onDataChange} />}
         {activeTab === "quizzes" && <QuizzesTab classId={selectedClass.id} />}
+        {activeTab === "overall_averages" && (
+          <>
+            {console.log("ClassTabs: selectedClass object:", selectedClass)}
+            {selectedClass && selectedClass.id ? (
+              <ClassAverageScores classId={selectedClass.id} />
+            ) : (
+              <p>Please select a class to view overall averages.</p>
+            )}
+          </>
+        )}
         {activeTab === "settings" && <SettingsTab classId={selectedClass.id} />}
         {activeTab === "class_management" && <TeacherClassManagementTab teacherName={username} />}
       </div>
@@ -476,7 +488,7 @@ function QuizzesTab({ classId }) {
   const [quizzes, setQuizzes] = useState([]);
   const [loadingQuizzes, setLoadingQuizzes] = useState(true);
   const [error, setError] = useState("");
-  const [showWeightSettings, setShowWeightSettings] = useState(false);
+
 
   const fetchQuizzes = () => {
     setLoadingQuizzes(true);
@@ -494,14 +506,12 @@ function QuizzesTab({ classId }) {
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <h2 className="text-xl font-semibold">Class Quizzes</h2>
         <div className="flex items-center gap-2">
-          <button onClick={() => setShowWeightSettings(!showWeightSettings)} className="bg-gray-200 text-gray-700 px-4 py-2 rounded-md hover:bg-gray-300 transition-colors text-sm">
-            {showWeightSettings ? 'Hide Weights' : 'Set Weights'}
-          </button>
+
           <Link to={`/teacher/quiz/new?classId=${classId}`} className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 flex items-center gap-2 transition-colors text-sm"><Plus size={16} /> Create Quiz</Link>
         </div>
       </div>
 
-      {showWeightSettings && <QuizWeightSettings classId={classId} />}
+
 
       {loadingQuizzes ? <p>Loading quizzes...</p> : (
         quizzes.length > 0 ? (
@@ -620,10 +630,12 @@ function QuizCard({ quiz, fetchQuizzes, setError }) {
     <div className="p-4 rounded-lg bg-gray-50 border border-gray-200 transition-shadow hover:shadow-sm">
       {/* Main Info Bar */}
       <div className="flex flex-wrap justify-between items-center gap-4">
-        <div className="flex-grow">
-          <p className="font-semibold text-gray-800 text-lg">{quiz.topic}</p>
-          <p className="text-xs text-gray-500">Created: {new Date(quiz.created_at).toLocaleString()}</p>
-        </div>
+              <div>
+                <p className="font-semibold text-gray-800">{quiz.topic}</p>
+                <p className="text-sm text-gray-500">Type: {quiz.type}</p>
+                <p className="text-xs text-gray-500 mt-1">Created: {new Date(quiz.created_at).toLocaleString()}</p>
+                <p className="text-sm text-gray-600">Students Taken: {quiz.students_taken} / {quiz.students_taken + quiz.students_not_taken}</p>
+              </div>
         <div className="flex items-center gap-4">
           <div className="text-center">
             <p className="font-bold text-lg text-green-600">{quiz.students_taken}</p>
@@ -663,6 +675,7 @@ function QuizCard({ quiz, fetchQuizzes, setError }) {
                       <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
                       <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Score</th>
                       <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Attempts</th>
+                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Overall Average</th>
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
@@ -676,6 +689,7 @@ function QuizCard({ quiz, fetchQuizzes, setError }) {
                         </td>
                         <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">{status.score !== null ? `${status.score}` : 'N/A'}</td>
                         <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">{status.status === 'Completed' ? `${status.attempts_taken} / ${status.max_attempts}` : 'N/A'}</td>
+                        <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">{status.overall_weighted_average_score !== null ? `${status.overall_weighted_average_score}%` : 'N/A'}</td>
                       </tr>
                     ))}
                   </tbody>

@@ -65,6 +65,17 @@ class CheatingLogRequest(BaseModel):
     details: Optional[str] = None
     result_id: Optional[UUID] = None
 
+class QuizAverageScoreResponse(BaseModel):
+    quiz_id: UUID
+    average_score: Optional[float] = None
+    total_attempts: int
+
+class LatestQuizScoreResponse(BaseModel):
+    quiz_id: UUID
+    latest_score: Optional[int] = None
+    latest_attempt_number: Optional[int] = None
+    latest_submission_time: Optional[datetime] = None
+
 # --- Endpoints ---
 
 @router.post("/submit", response_model=ResultOut, status_code=status.HTTP_201_CREATED)
@@ -340,6 +351,37 @@ def grade_essay_answer(
         raise e
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"An error occurred: {str(e)}")
+
+class QuizAverageScoreResponse(BaseModel):
+    quiz_id: UUID
+    average_score: Optional[float] = None
+    total_attempts: int
+
+@router.get("/my/quiz/{quiz_id}/average_score", response_model=QuizAverageScoreResponse)
+async def get_my_quiz_average_score(
+    quiz_id: UUID,
+    sb: Client = Depends(get_supabase),
+    current_user: dict = Depends(get_current_user),
+):
+    user_id = current_user.get("id")
+
+    # Fetch all scores for the given quiz and user
+    results = sb.table("results").select("score").eq("quiz_id", str(quiz_id)).eq("user_id", user_id).execute().data
+
+    if not results:
+        return QuizAverageScoreResponse(quiz_id=quiz_id, average_score=None, total_attempts=0)
+
+    # Filter out None scores and calculate average
+    valid_scores = [r["score"] for r in results if r["score"] is not None]
+
+    average_score = sum(valid_scores) / len(valid_scores) if valid_scores else None
+    total_attempts = len(results)
+
+    return QuizAverageScoreResponse(
+        quiz_id=quiz_id,
+        average_score=round(average_score, 2) if average_score is not None else None,
+        total_attempts=total_attempts
+    )
 
 @router.post("/cheating-log", status_code=status.HTTP_204_NO_CONTENT)
 def log_cheating_event(

@@ -34,4 +34,6 @@ api.interceptors.response.use(
   }
 );
 
+export const getOverallStudentAverages = (classId) => api.get(`/dashboard/teacher/class/${classId}/overall_student_averages`);
+
 export default api;
