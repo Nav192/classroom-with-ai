@@ -1,7 +1,8 @@
 import { useState, useEffect } from "react";
-import { Plus, Edit, Trash2, Search } from "lucide-react";
+import { Plus, Edit, Trash2, Search, KeyRound } from "lucide-react";
 import api from "../../services/api";
 import UserModal from "../UserModal";
+import PasswordUpdateModal from "./PasswordUpdateModal"; // Import the new modal
 
 // User Management Tab
 export default function UserManagementTab({ setStats }) {
@@ -9,7 +10,9 @@ export default function UserManagementTab({ setStats }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false); // State for password modal
   const [editingUser, setEditingUser] = useState(null);
+  const [selectedUserId, setSelectedUserId] = useState(null); // State for the user being edited
   const [searchTerm, setSearchTerm] = useState("");
   const [activeRoleTab, setActiveRoleTab] = useState('student');
 
@@ -31,6 +34,11 @@ export default function UserManagementTab({ setStats }) {
   const handleOpenModal = (user = null) => {
     setEditingUser(user);
     setIsModalOpen(true);
+  };
+
+  const handleOpenPasswordModal = (userId) => {
+    setSelectedUserId(userId);
+    setIsPasswordModalOpen(true);
   };
 
   const handleDeleteUser = async (userId) => {
@@ -55,6 +63,17 @@ export default function UserManagementTab({ setStats }) {
       setIsModalOpen(false);
     } catch (err) {
       const errorMsg = err.response?.data?.detail || (editingUser ? "Failed to update user." : "Failed to create user.");
+      alert(errorMsg);
+    }
+  };
+
+  const handleUpdatePassword = async (userId, password) => {
+    try {
+      await api.put(`/admin/users/${userId}/password`, { password });
+      setIsPasswordModalOpen(false);
+      alert("Password updated successfully!");
+    } catch (err) {
+      const errorMsg = err.response?.data?.detail || "Failed to update password.";
       alert(errorMsg);
     }
   };
@@ -114,6 +133,9 @@ export default function UserManagementTab({ setStats }) {
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{user.username}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{user.email}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                    <button onClick={() => handleOpenPasswordModal(user.id)} className="p-2 text-gray-500 hover:text-green-600" title="Ganti Password">
+                      <KeyRound size={18} />
+                    </button>
                     <button onClick={() => handleOpenModal(user)} className="p-2 text-gray-500 hover:text-blue-600"><Edit size={18} /></button>
                     <button onClick={() => handleDeleteUser(user.id)} className="p-2 text-gray-500 hover:text-red-600"><Trash2 size={18} /></button>
                   </td>
@@ -126,6 +148,7 @@ export default function UserManagementTab({ setStats }) {
         </div>
       )}
       {isModalOpen && <UserModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} onSubmit={handleSaveUser} user={editingUser} />}
+      {isPasswordModalOpen && <PasswordUpdateModal isOpen={isPasswordModalOpen} onClose={() => setIsPasswordModalOpen(false)} onSubmit={handleUpdatePassword} userId={selectedUserId} />}
     </div>
   );
 }

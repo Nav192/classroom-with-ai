@@ -147,6 +147,18 @@ def update_user(user_id: UUID, user_data: UserUpdate, sb: Client = Depends(get_s
              raise HTTPException(status_code=500, detail=e.message)
         raise HTTPException(status_code=500, detail=f"An unexpected error occurred: {str(e)}")
 
+class UserPasswordUpdate(BaseModel):
+    password: str
+
+@router.put("/users/{user_id}/password", status_code=status.HTTP_204_NO_CONTENT, summary="Update a user's password")
+def update_user_password(user_id: UUID, user_data: UserPasswordUpdate, sb: Client = Depends(get_supabase_admin)):
+    try:
+        sb.auth.admin.update_user_by_id(str(user_id), {"password": user_data.password})
+    except AuthApiError as e:
+        raise HTTPException(status_code=e.status, detail=e.message)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @router.delete("/users/{user_id}", status_code=status.HTTP_204_NO_CONTENT, summary="Permanently delete a user")
 def delete_user(user_id: UUID, sb: Client = Depends(get_supabase_admin)):
     try:
