@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { RefreshCw, Trash2 } from "lucide-react";
+import { RefreshCw, Trash2, ChevronDown, ChevronRight } from "lucide-react";
 import api from "../../services/api";
 
 // Class Management Tab
@@ -7,6 +7,9 @@ export default function ClassManagementTab({ setStats }) {
   const [classes, setClasses] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [expandedClassId, setExpandedClassId] = useState(null);
+  const [classStudents, setClassStudents] = useState([]);
+  const [studentsLoading, setStudentsLoading] = useState(false);
 
   const fetchClasses = async () => {
     setLoading(true);
@@ -22,6 +25,27 @@ export default function ClassManagementTab({ setStats }) {
   };
 
   useEffect(() => { fetchClasses(); }, []);
+
+  const fetchClassStudents = async (classId) => {
+    setStudentsLoading(true);
+    try {
+      const response = await api.get(`/admin/classes/${classId}/students`);
+      setClassStudents(response.data);
+    } catch (err) {
+      console.error("Failed to fetch class students", err);
+    } finally {
+      setStudentsLoading(false);
+    }
+  };
+
+  const handleToggleClass = (classId) => {
+    if (expandedClassId === classId) {
+      setExpandedClassId(null);
+    } else {
+      setExpandedClassId(classId);
+      fetchClassStudents(classId);
+    }
+  };
 
   const handleResetCode = async (classId) => {
     if (window.confirm("Are you sure you want to reset the class code?")) {
@@ -54,6 +78,7 @@ export default function ClassManagementTab({ setStats }) {
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"></th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Class Name</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Grade</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Teacher Name</th>
@@ -64,17 +89,55 @@ export default function ClassManagementTab({ setStats }) {
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
               {classes.map((c) => (
-                <tr key={c.id}>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{c.class_name}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{c.grade}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{c.teacher_name || 'N/A'}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{new Date(c.created_at).toLocaleString('en-US', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 font-mono">{c.class_code}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                    <button onClick={() => handleResetCode(c.id)} className="p-2 text-gray-500 hover:text-blue-600" title="Reset Code"><RefreshCw size={18} /></button>
-                    <button onClick={() => handleDeleteClass(c.id)} className="p-2 text-gray-500 hover:text-red-600" title="Delete Class"><Trash2 size={18} /></button>
-                  </td>
-                </tr>
+                <>
+                  <tr key={c.id} className="cursor-pointer hover:bg-gray-50" onClick={() => handleToggleClass(c.id)}>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      {expandedClassId === c.id ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{c.class_name}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{c.grade}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{c.teacher_name || 'N/A'}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{new Date(c.created_at).toLocaleString('en-US', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 font-mono">{c.class_code}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                      <button onClick={(e) => { e.stopPropagation(); handleResetCode(c.id); }} className="p-2 text-gray-500 hover:text-blue-600" title="Reset Code"><RefreshCw size={18} /></button>
+                      <button onClick={(e) => { e.stopPropagation(); handleDeleteClass(c.id); }} className="p-2 text-gray-500 hover:text-red-600" title="Delete Class"><Trash2 size={18} /></button>
+                    </td>
+                  </tr>
+                  {expandedClassId === c.id && (
+                    <tr>
+                      <td colSpan="7" className="p-4 bg-gray-100">
+                        <div className="p-4 bg-white rounded-lg shadow-sm mb-4">
+                            <h4 className="text-md font-semibold mb-2">Teacher</h4>
+                            <p className="text-sm text-gray-700">{c.teacher_name || 'N/A'}</p>
+                        </div>
+                        <h4 className="text-md font-semibold mb-2">Students</h4>
+                        {studentsLoading ? (
+                          <p>Loading students...</p>
+                        ) : classStudents.length > 0 ? (
+                          <table className="min-w-full divide-y divide-gray-200">
+                            <thead className="bg-gray-200">
+                              <tr>
+                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Student Name</th>
+                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Email</th>
+                              </tr>
+                            </thead>
+                            <tbody className="bg-white divide-y divide-gray-200">
+                              {classStudents.map(student => (
+                                <tr key={student.id}>
+                                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{student.username}</td>
+                                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{student.email}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        ) : (
+                          <p>No students in this class.</p>
+                        )}
+                      </td>
+                    </tr>
+                  )}
+                </>
               ))}
             </tbody>
           </table>
