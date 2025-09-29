@@ -231,15 +231,12 @@ def get_my_classes(
     """Fetches all classes the current user is a member of."""
     try:
         user_id = user.get("id")
-        print(f"DEBUG: get_my_classes - User ID: {user_id}")
         
         member_of_res = db.table("class_members").select("class_id").eq("user_id", user_id).execute()
-        print(f"DEBUG: get_my_classes - member_of_res Data: {member_of_res.data}")
         if not member_of_res.data:
             return []
         
         class_ids = [item['class_id'] for item in member_of_res.data]
-        print(f"DEBUG: get_my_classes - Class IDs from members: {class_ids}")
         
         query = db.table("classes").select("id, class_name, class_code, grade, teacher_name, created_at, is_archived").in_("id", class_ids)
 
@@ -247,7 +244,6 @@ def get_my_classes(
             query = query.eq("is_archived", False)
 
         classes_res = query.order("created_at", desc=True).execute()
-        print(f"DEBUG: get_my_classes - Supabase Response Data (from class_ids): {classes_res.data}")
         
         return classes_res.data or []
 
@@ -309,7 +305,34 @@ def get_class_details(
     return class_res.data
 
 
-@router.get("/{class_id}/students", response_model=List[StudentResponse], summary="Get all students in a class")
+@router.delete("/{class_id}/leave", status_code=status.HTTP_200_OK, summary="Allow a student to leave a class")
+def leave_class(
+    class_id: UUID,
+    user: dict = Depends(get_current_user),
+    db: supabase.client.Client = Depends(get_supabase)
+):
+    """Allows the current user (student) to leave a class."""
+    user_id = user.get("id")
+
+    try:
+        # Verify the user is a member of the class
+        membership_res = db.table("class_members").select("id").eq("class_id", str(class_id)).eq("user_id", user_id).single().execute()
+        if not membership_res.data:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="You are not a member of this class.")
+
+        # Delete the membership entry
+        db.table("class_members").delete().eq("class_id", str(class_id)).eq("user_id", user_id).execute()
+        
+        return {"message": "Successfully left the class."}
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        import traceback
+        print(f"Error leaving class: {e}")
+        print(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 def get_students_in_class(
     class_id: UUID,
     user: dict = Depends(get_current_user),

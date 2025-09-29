@@ -298,7 +298,7 @@ def get_student_progress_in_class(
             # Calculate overall progress percentage
             overall_progress_percentage = 0.0
             # Check if there are any materials or quizzes to progress on
-            if total_materials > 0 or len(latest_student_results) > 0:
+            if total_materials > 0 or len(highest_student_results) > 0:
                 overall_progress_percentage = (materials_progress_percentage + quiz_average_percentage) / 2
 
             student_details.append(StudentProgressDetail(

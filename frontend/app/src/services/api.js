@@ -40,4 +40,6 @@ export const fetchStudentQuizzes = (userId) => api.get(`/student/${userId}/quizz
 export const fetchStudentQuizResults = () => api.get(`/results/history`);
 export const fetchStudentProgress = (userId) => api.get(`/student/${userId}/progress`);
 
+export const leaveClass = (classId) => api.delete(`/classes/${classId}/leave`);
+
 export default api;

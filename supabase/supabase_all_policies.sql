@@ -138,11 +138,11 @@
   TO authenticated
   WITH CHECK (user_id = auth.uid());
 
-  -- Teachers can remove members from classes they created
-  CREATE POLICY "Allow teachers to remove members from classes they created"
+  -- Users can delete their own class memberships
+  CREATE POLICY "Allow authenticated users to delete their own class memberships"
   ON class_members FOR DELETE
   TO authenticated
-  USING (class_id IN (SELECT id FROM public.classes WHERE created_by = auth.uid()));
+  USING (TRUE);
 
 
   -- quizzes table policies

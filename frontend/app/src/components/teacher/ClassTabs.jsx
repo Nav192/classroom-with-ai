@@ -1,12 +1,12 @@
-import React, { useState } from 'react';
-import { ChevronLeft } from 'lucide-react';
-import StatisticsTab from './StatisticsTab';
-import StudentsTab from './StudentsTab';
-import MaterialsTab from './MaterialsTab';
-import QuizzesTab from './QuizzesTab';
-import ClassAverageScores from '../../pages/ClassAverageScores';
-import TeacherClassManagementTab from './TeacherClassManagementTab';
-import SettingsTab from './SettingsTab';
+import React, { useState } from "react";
+import { ChevronLeft } from "lucide-react";
+import StatisticsTab from "./StatisticsTab";
+import StudentsTab from "./StudentsTab";
+import MaterialsTab from "./MaterialsTab";
+import QuizzesTab from "./QuizzesTab";
+import ClassAverageScores from "../../pages/ClassAverageScores";
+import TeacherClassManagementTab from "./TeacherClassManagementTab";
+import SettingsTab from "./SettingsTab";
 
 function ClassTabs({
   selectedClass,
@@ -22,8 +22,6 @@ function ClassTabs({
     { id: "materials", label: "Materials" },
     { id: "quizzes", label: "Quizzes" },
     { id: "overall_averages", label: "Overall Averages" },
-    { id: "class_management", label: "Class Management" },
-    { id: "settings", label: "Settings" },
   ];
 
   return (
@@ -51,6 +49,7 @@ function ClassTabs({
           <ChevronLeft size={16} /> Back to Classes
         </button>
       </div>
+
       <div className="py-6">
         {activeTab === "statistics" && (
           <StatisticsTab classId={selectedClass.id} />
@@ -77,10 +76,6 @@ function ClassTabs({
               <p>Please select a class to view overall averages.</p>
             )}
           </>
-        )}
-        {activeTab === "settings" && <SettingsTab classId={selectedClass.id} />}
-        {activeTab === "class_management" && (
-          <TeacherClassManagementTab teacherName={username} />
         )}
       </div>
     </div>

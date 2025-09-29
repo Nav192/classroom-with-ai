@@ -38,7 +38,7 @@ export default function StudentDashboard() {
   const fetchMyClasses = async () => {
     setLoadingClasses(true);
     try {
-      const response = await api.get(`/classes/me?show_archived=true`);
+      const response = await api.get(`/classes/me?show_archived=true&_=${new Date().getTime()}`);
       const classes = response.data || [];
       setMyClasses(classes);
     } catch (err) {
@@ -112,11 +112,13 @@ export default function StudentDashboard() {
             <ClassGridDisplay
               myClasses={activeClasses}
               onSelectClass={setSelectedClassDetails}
+              onClassLeft={fetchMyClasses}
             />
           ) : (
             <ClassGridDisplay
               myClasses={archivedClasses}
               onSelectClass={setSelectedClassDetails}
+              onClassLeft={fetchMyClasses}
             />
           )}
         </div>
