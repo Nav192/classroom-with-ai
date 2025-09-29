@@ -9,6 +9,7 @@ function StudentsTab({ classId, className }) {
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [selectedStudentId, setSelectedStudentId] = useState("all"); // 'all' for all students, or a specific student ID
 
   useEffect(() => {
     setLoading(true);
@@ -20,7 +21,11 @@ function StudentsTab({ classId, className }) {
   }, [classId]);
 
   const handleDownloadReport = () => {
-    const url = `${api.defaults.baseURL}/reports/${classId}/students.csv`;
+    let url = `${api.defaults.baseURL}/reports/${classId}/students.csv`;
+    if (selectedStudentId !== "all") {
+      url += `?student_id=${selectedStudentId}`;
+    }
+
     const token = localStorage.getItem("access_token");
     fetch(url, { headers: { Authorization: `Bearer ${token}` } })
       .then((response) => response.blob())
@@ -28,7 +33,10 @@ function StudentsTab({ classId, className }) {
         const downloadUrl = window.URL.createObjectURL(blob);
         const a = document.createElement("a");
         a.href = downloadUrl;
-        a.download = `report_${className.replace(/\s+/g, "_")}.csv`;
+        const studentName = selectedStudentId !== "all" 
+          ? studentData.student_details.find(s => s.user_id === selectedStudentId)?.username || selectedStudentId
+          : "all_students";
+        a.download = `report_${className.replace(/\s+/g, "_")}_${studentName}.csv`;
         document.body.appendChild(a);
         a.click();
         a.remove();
@@ -45,12 +53,26 @@ function StudentsTab({ classId, className }) {
     <div className="bg-white p-6 rounded-lg shadow-md border border-gray-200">
       <div className="flex justify-between items-center mb-4">
         <h2 className="text-xl font-semibold">Students</h2>
-        <button
-          onClick={handleDownloadReport}
-          className="bg-gray-600 text-white px-4 py-2 rounded-md hover:bg-gray-700 flex items-center gap-2 transition-colors text-sm"
-        >
-          <Download size={16} /> Download Report
-        </button>
+        <div className="flex items-center gap-2">
+          <select
+            value={selectedStudentId}
+            onChange={(e) => setSelectedStudentId(e.target.value)}
+            className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+          >
+            <option value="all">All Students</option>
+            {student_details.map((student) => (
+              <option key={student.user_id} value={student.user_id}>
+                {student.username || student.email}
+              </option>
+            ))}
+          </select>
+          <button
+            onClick={handleDownloadReport}
+            className="bg-gray-600 text-white px-4 py-2 rounded-md hover:bg-gray-700 flex items-center gap-2 transition-colors text-sm"
+          >
+            <Download size={16} /> {selectedStudentId === "all" ? "Download All Reports" : "Download Report"}
+          </button>
+        </div>
       </div>
       {student_details.length > 0 ? (
         <div className="overflow-x-auto">

@@ -36,6 +36,8 @@ export default function Login() {
       localStorage.setItem("role", data.role);
 
       navigate(`/${data.role}/dashboard`);
+
+      navigate(`/${data.role}/dashboard`);
     } catch (err) {
       setError(err.message || "Login failed. Please try again.");
     } finally {

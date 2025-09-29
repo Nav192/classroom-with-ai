@@ -12,6 +12,7 @@ router = APIRouter()
 @router.get("/{class_id}/students.csv", summary="Generate a student learning report for a specific class in CSV format")
 def generate_class_learning_report_csv(
     class_id: UUID,
+    student_id: UUID | None = None, # Add optional student_id parameter
     sb: SupabaseClient = Depends(get_supabase),
     current_teacher: dict = Depends(get_current_teacher_user),
     is_member: bool = Depends(verify_class_membership)
@@ -21,11 +22,16 @@ def generate_class_learning_report_csv(
     Only accessible by teachers who are members of the class.
     """
     try:
-        # 1. Get all students in the class
-        class_members = sb.table("class_members").select("profiles(id, username, email, role)").eq("class_id", str(class_id)).execute().data or []
+        # 1. Get all students in the class, or a specific student if student_id is provided
+        query = sb.table("class_members").select("profiles(id, username, email, role)").eq("class_id", str(class_id))
+        if student_id:
+            query = query.eq("profiles.id", str(student_id))
+        
+        class_members = query.execute().data or []
         students = [member["profiles"] for member in class_members if member.get("profiles") and member["profiles"]["role"] == "student"]
+        
         if not students:
-            raise HTTPException(status_code=404, detail="No students found in this class.")
+            raise HTTPException(status_code=404, detail="No students found in this class or for the given student ID.")
         
         student_id_map = {s['id']: {'username': s['username'], 'email': s['email']} for s in students}
         student_ids = list(student_id_map.keys())
@@ -35,8 +41,11 @@ def generate_class_learning_report_csv(
         quizzes_in_class = {q['id']: q['topic'] for q in (sb.table("quizzes").select("id, topic").eq("class_id", str(class_id)).execute().data or [])}
 
         # 3. Get all relevant progress and result data
-        materials_progress = sb.table("materials_progress").select("user_id, material_id, status").in_("user_id", student_ids).in_("material_id", list(materials_in_class.keys())).execute().data or []
-        quiz_results = sb.table("results").select("user_id, quiz_id, score, total, attempt_number").in_("user_id", student_ids).in_("quiz_id", list(quizzes_in_class.keys())).execute().data or []
+        materials_progress_query = sb.table("materials_progress").select("user_id, material_id, status").in_("user_id", student_ids).in_("material_id", list(materials_in_class.keys()))
+        quiz_results_query = sb.table("results").select("user_id, quiz_id, score, total, attempt_number").in_("user_id", student_ids).in_("quiz_id", list(quizzes_in_class.keys()))
+
+        materials_progress = materials_progress_query.execute().data or []
+        quiz_results = quiz_results_query.execute().data or []
 
         # 4. Create Material Progress DataFrame
         material_report_data = []

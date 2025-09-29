@@ -315,7 +315,8 @@ CREATE TABLE public.users (
     avatar_url text,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
-    role text DEFAULT 'student'::text NOT NULL
+    role text DEFAULT 'student'::text NOT NULL,
+    last_password_change timestamp with time zone DEFAULT now() NOT NULL
 );
 
 
