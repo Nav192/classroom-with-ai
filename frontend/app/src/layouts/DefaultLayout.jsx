@@ -7,6 +7,7 @@ import {
   BarChart,
   MessageSquare,
   LogOut,
+  Backpack,
   Search,
   Bell,
   User as UserIcon,
@@ -15,7 +16,7 @@ import {
 const navLinks = {
   admin: [
     { name: "Dashboard - Users", path: "/admin/dashboard", icon: Home },
-    { name: "Classes", path: "/admin/dashboard?tab=classes", icon: Book },
+    { name: "Classes", path: "/admin/dashboard?tab=classes", icon: Backpack },
   ],
   teacher: [
     { name: "Dashboard", path: "/teacher/dashboard", icon: Home },
