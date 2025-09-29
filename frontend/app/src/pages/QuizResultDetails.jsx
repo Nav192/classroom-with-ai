@@ -42,7 +42,10 @@ const QuizResultDetails = () => {
 
     const { quiz_title, score, total_questions, submitted_at, details, max_attempts, attempts_taken } = resultDetails;
 
-    const canViewDetails = attempts_taken >= max_attempts;
+    const userRole = localStorage.getItem("user_role");
+    const isTeacherOrAdmin = userRole === 'teacher' || userRole === 'admin';
+
+    const canViewDetails = isTeacherOrAdmin || (attempts_taken >= max_attempts);
     const attemptsRemaining = max_attempts - attempts_taken;
 
     return (
@@ -70,6 +73,14 @@ const QuizResultDetails = () => {
                         <CardContent>
                             <Typography variant="h6" component="div" sx={{ mb: 2 }}>
                                 Question {index + 1}: {item.question.question_text}
+                                {isTeacherOrAdmin && item.difficulty_level && (
+                                    <Chip 
+                                        label={`Difficulty: ${item.difficulty_level}`}
+                                        size="small"
+                                        color={item.difficulty_level === 'Hard' ? 'error' : item.difficulty_level === 'Medium' ? 'warning' : 'success'}
+                                        sx={{ ml: 2 }}
+                                    />
+                                )}
                             </Typography>
                             
                             <Box 

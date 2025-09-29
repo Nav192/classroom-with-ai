@@ -90,6 +90,9 @@ class ResultAnswerDetailOut(BaseModel):
     correct_answer: Optional[str]
     is_correct: Optional[bool]
 
+class TeacherResultAnswerDetailOut(ResultAnswerDetailOut):
+    difficulty_level: Optional[str] = None
+
 class QuizResultDetailOut(BaseModel):
     quiz_id: UUID
     quiz_title: str
@@ -102,9 +105,21 @@ class QuizResultDetailOut(BaseModel):
     attempts_taken: Optional[int] = None
     details: List[ResultAnswerDetailOut]
 
+class TeacherQuizResultDetailOut(BaseModel):
+    quiz_id: UUID
+    quiz_title: str
+    result_id: UUID
+    user_id: UUID
+    score: int
+    total_questions: int
+    submitted_at: datetime
+    max_attempts: Optional[int] = None
+    attempts_taken: Optional[int] = None
+    details: List[TeacherResultAnswerDetailOut]
+
 # --- Endpoints ---
 
-@router.get("/{result_id}/details", response_model=QuizResultDetailOut)
+@router.get("/{result_id}/details")
 def get_quiz_result_details(
     result_id: UUID,
     current_user: dict = Depends(get_current_user),
@@ -122,7 +137,7 @@ def get_quiz_result_details(
     
     result_data = result_res.data
     user_id = current_user.get("id")
-    user_role = current_user.get("user_metadata", {}).get("role")
+    user_role = current_user.get("role")
 
     # 2. Fetch quiz details for max_attempts and authorization
     quiz_res = sb.table("quizzes").select("id, topic, user_id, class_id, max_attempts").eq("id", result_data['quiz_id']).single().execute()
@@ -133,19 +148,24 @@ def get_quiz_result_details(
     max_attempts = quiz_data.get('max_attempts')
 
     # 3. Count attempts taken by the user for this quiz
-    attempts_taken_res = sb.table("results").select("id", count="exact").eq("quiz_id", quiz_data['id']).eq("user_id", user_id).execute()
+    attempts_taken_res = sb.table("results").select("id", count="exact").eq("quiz_id", quiz_data['id']).eq("user_id", result_data['user_id']).execute()
     attempts_taken = attempts_taken_res.count
 
     # 4. Authorization Check
     is_student_owner = str(result_data['user_id']) == str(user_id)
-    is_teacher_of_class = False
-    if user_role == 'teacher':
-        if quiz_data['class_id']:
-            member_res = sb.table("classes").select("id").eq("id", quiz_data['class_id']).eq("created_by", user_id).single().execute()
-            if member_res.data:
-                is_teacher_of_class = True
 
-    if not is_student_owner and not is_teacher_of_class:
+    if user_role == 'student':
+        if not is_student_owner:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You do not have permission to view these results.")
+    elif user_role == 'teacher' or user_role == 'admin':
+        # Teachers/Admins must be members or creators of the class associated with the quiz
+        try:
+            verify_class_membership(class_id=quiz_data['class_id'], user=current_user, sb_admin=sb)
+        except HTTPException as e:
+            if e.status_code == status.HTTP_404_NOT_FOUND: # Class not found for quiz
+                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You do not have permission to view these results.")
+            raise e
+    else:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You do not have permission to view these results.")
 
     # 5. Fetch all questions and submitted answers for the quiz
@@ -158,38 +178,107 @@ def get_quiz_result_details(
     # Map submitted answers by question_id for easy lookup
     submitted_answers_map = {str(ans['question_id']): ans for ans in submitted_answers_res.data}
 
-    # 6. Combine data into the detailed response
+    # Initialize detailed_results list
     detailed_results = []
-    for question in questions_res.data:
-        question_id_str = str(question['id'])
-        submitted = submitted_answers_map.get(question_id_str)
 
-        detailed_results.append(
-            ResultAnswerDetailOut(
-                question=QuestionDetailOut(
-                    id=question['id'],
-                    question_text=question['text'],
-                    options=question.get('options'),
-                    question_type=question['type']
-                ),
-                submitted_answer=submitted['answer'] if submitted else None,
-                correct_answer=question.get('answer'),
-                is_correct=submitted['is_correct'] if submitted else None
+    # If user is teacher/admin, calculate difficulty levels
+    if user_role == 'teacher' or user_role == 'admin':
+        # Fetch all result_ids for this quiz
+        all_result_ids_res = sb.table("results").select("id").eq("quiz_id", quiz_data['id']).execute()
+        all_result_ids = [r['id'] for r in all_result_ids_res.data] if all_result_ids_res.data else []
+
+        all_quiz_answers = []
+        if all_result_ids:
+            # Fetch all quiz answers associated with these results
+            all_quiz_answers_res = sb.table("quiz_answers").select("question_id, is_correct").in_("result_id", all_result_ids).execute()
+            all_quiz_answers = all_quiz_answers_res.data or []
+
+        question_stats = {}
+        for ans in all_quiz_answers:
+            q_id = str(ans['question_id'])
+            if q_id not in question_stats:
+                question_stats[q_id] = {'total_attempts': 0, 'correct_attempts': 0}
+            
+            # Only count if is_correct is not None (i.e., it was an auto-gradable question or manually graded)
+            if ans['is_correct'] is not None:
+                question_stats[q_id]['total_attempts'] += 1
+                if ans['is_correct']:
+                    question_stats[q_id]['correct_attempts'] += 1
+        
+        for question in questions_res.data:
+            question_id_str = str(question['id'])
+            submitted = submitted_answers_map.get(question_id_str)
+            stats = question_stats.get(question_id_str, {'total_attempts': 0, 'correct_attempts': 0})
+
+            difficulty_level = None
+            if stats['total_attempts'] > 0:
+                correct_percentage = (stats['correct_attempts'] / stats['total_attempts']) * 100
+                if correct_percentage < 50:
+                    difficulty_level = 'Hard'
+                elif correct_percentage == 50:
+                    difficulty_level = 'Medium'
+                else: # > 50%
+                    difficulty_level = 'Easy'
+
+            detailed_results.append(
+                TeacherResultAnswerDetailOut(
+                    question=QuestionDetailOut(
+                        id=question['id'],
+                        question_text=question['text'],
+                        options=question.get('options'),
+                        question_type=question['type']
+                    ),
+                    submitted_answer=submitted['answer'] if submitted else None,
+                    correct_answer=question.get('answer'),
+                    is_correct=submitted['is_correct'] if submitted else None,
+                    difficulty_level=difficulty_level
+                )
             )
+        
+        return TeacherQuizResultDetailOut(
+            quiz_id=quiz_data['id'],
+            quiz_title=quiz_data['topic'],
+            result_id=result_id,
+            user_id=result_data['user_id'],
+            score=result_data['score'],
+            total_questions=result_data['total'],
+            submitted_at=result_data['created_at'],
+            max_attempts=max_attempts,
+            attempts_taken=attempts_taken,
+            details=detailed_results,
         )
 
-    return QuizResultDetailOut(
-        quiz_id=quiz_data['id'],
-        quiz_title=quiz_data['topic'],
-        result_id=result_id,
-        user_id=result_data['user_id'],
-        score=result_data['score'],
-        total_questions=result_data['total'],
-        submitted_at=result_data['created_at'],
-        max_attempts=max_attempts,
-        attempts_taken=attempts_taken,
-        details=detailed_results,
-    )
+    else: # User is a student
+        for question in questions_res.data:
+            question_id_str = str(question['id'])
+            submitted = submitted_answers_map.get(question_id_str)
+
+            detailed_results.append(
+                ResultAnswerDetailOut(
+                    question=QuestionDetailOut(
+                        id=question['id'],
+                        question_text=question['text'],
+                        options=question.get('options'),
+                        question_type=question['type']
+                    ),
+                    submitted_answer=submitted['answer'] if submitted else None,
+                    correct_answer=question.get('answer'),
+                    is_correct=submitted['is_correct'] if submitted else None
+                )
+            )
+        
+        return QuizResultDetailOut(
+            quiz_id=quiz_data['id'],
+            quiz_title=quiz_data['topic'],
+            result_id=result_id,
+            user_id=result_data['user_id'],
+            score=result_data['score'],
+            total_questions=result_data['total'],
+            submitted_at=result_data['created_at'],
+            max_attempts=max_attempts,
+            attempts_taken=attempts_taken,
+            details=detailed_results,
+        )
 
 
 @router.post("/submit", response_model=ResultOut, status_code=status.HTTP_201_CREATED)
@@ -242,7 +331,6 @@ async def submit_quiz(
         is_correct = None
         if question_data['type'] in ['mcq', 'true_false']:
             is_correct = str(question_data['answer']).strip().lower() == str(submitted_answer.response).strip().lower()
-            print(f"DEBUG: Is Correct: {is_correct}")
             if is_correct:
                 score += 1
 

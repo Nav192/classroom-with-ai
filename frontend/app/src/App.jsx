@@ -1,4 +1,11 @@
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import {
+  BrowserRouter,
+  Routes,
+  Route,
+  Navigate,
+  useNavigate,
+} from "react-router-dom";
+import { useEffect, useState, useCallback } from "react";
 import Signup from "./pages/Signup.jsx";
 import Login from "./pages/Login.jsx";
 import StudentDashboard from "./pages/StudentDashboard.jsx";
@@ -18,67 +25,222 @@ import StudentProgress from "./pages/StudentProgress.jsx";
 import ClassAverageScores from "./pages/ClassAverageScores.jsx";
 import QuizSubmissions from "./pages/QuizSubmissions.jsx";
 import QuizResultDetails from "./pages/QuizResultDetails.jsx";
+import AdminLogin from "./pages/AdminLogin.jsx";
+
+const INACTIVITY_TIMEOUT = 15 * 60 * 1000; // 15 minutes in milliseconds
+
+function AppContent() {
+  const navigate = useNavigate();
+  const [lastActivity, setLastActivity] = useState(Date.now());
+
+  const logout = useCallback(() => {
+    localStorage.removeItem("access_token");
+    localStorage.removeItem("user_id");
+    localStorage.removeItem("role");
+    navigate("/login", { replace: true });
+    alert("You have been logged out due to inactivity.");
+  }, [navigate]);
+
+  const resetActivityTimer = useCallback(() => {
+    setLastActivity(Date.now());
+  }, []);
+
+  useEffect(() => {
+    const events = [
+      "load",
+      "mousemove",
+      "mousedown",
+      "click",
+      "scroll",
+      "keypress",
+    ];
+    events.forEach((event) =>
+      window.addEventListener(event, resetActivityTimer)
+    );
+
+    return () => {
+      events.forEach((event) =>
+        window.removeEventListener(event, resetActivityTimer)
+      );
+    };
+  }, [resetActivityTimer]);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const isAuthenticated = localStorage.getItem("access_token");
+      if (isAuthenticated && Date.now() - lastActivity > INACTIVITY_TIMEOUT) {
+        logout();
+      }
+    }, 1000); // Check every second
+
+    return () => clearInterval(interval);
+  }, [lastActivity, logout]);
+
+  return (
+    <Routes>
+      <Route path="/login" element={<Login />} />
+      <Route path="/signup" element={<Signup />} />
+      <Route path="/admin-login" element={<AdminLogin />} />
+
+      <Route element={<DefaultLayout />}>
+        <Route
+          path="/admin/dashboard"
+          element={
+            <ProtectedRoute
+              allowedRoles={["admin"]}
+              Component={AdminDashboard}
+            />
+          }
+        />
+        <Route path="/" element={<Navigate to="/login" replace />} />
+
+        <Route
+          path="/student/dashboard"
+          element={
+            <ProtectedRoute
+              allowedRoles={["student"]}
+              Component={StudentDashboard}
+            />
+          }
+        />
+        <Route
+          path="/student/quiz/:quizId"
+          element={
+            <ProtectedRoute allowedRoles={["student"]} Component={QuizTaker} />
+          }
+        />
+        <Route
+          path="/student/results/:resultId"
+          element={
+            <ProtectedRoute
+              allowedRoles={["student"]}
+              Component={QuizResultDetails}
+            />
+          }
+        />
+
+        <Route
+          path="/teacher/dashboard"
+          element={
+            <ProtectedRoute
+              allowedRoles={["teacher"]}
+              Component={TeacherDashboard}
+            />
+          }
+        />
+        <Route
+          path="/teacher/quiz/new"
+          element={
+            <ProtectedRoute
+              allowedRoles={["teacher"]}
+              Component={QuizBuilder}
+            />
+          }
+        />
+        <Route
+          path="/teacher/quiz/edit/:quizId"
+          element={
+            <ProtectedRoute
+              allowedRoles={["teacher"]}
+              Component={QuizBuilder}
+            />
+          }
+        />
+        <Route
+          path="/teacher/class/:classId/overall-averages"
+          element={
+            <ProtectedRoute
+              allowedRoles={["teacher"]}
+              Component={ClassAverageScores}
+            />
+          }
+        />
+        <Route
+          path="/teacher/class/:classId/quiz/:quizId/submissions"
+          element={
+            <ProtectedRoute
+              allowedRoles={["teacher"]}
+              Component={QuizSubmissions}
+            />
+          }
+        />
+        <Route
+          path="/teacher/student-progress"
+          element={
+            <ProtectedRoute
+              allowedRoles={["teacher"]}
+              Component={StudentProgress}
+            />
+          }
+        />
+
+        {/* Other routes that might need protection or role-based access */}
+        <Route
+          path="/materials"
+          element={
+            <ProtectedRoute
+              allowedRoles={["teacher", "admin"]}
+              Component={Materials}
+            />
+          }
+        />
+        <Route
+          path="/quizzes"
+          element={
+            <ProtectedRoute
+              allowedRoles={["teacher", "admin"]}
+              Component={Quizzes}
+            />
+          }
+        />
+        <Route
+          path="/results"
+          element={
+            <ProtectedRoute
+              allowedRoles={["teacher", "admin"]}
+              Component={ResultsPage}
+            />
+          }
+        />
+        <Route
+          path="/results/:resultId"
+          element={
+            <ProtectedRoute
+              allowedRoles={["teacher", "admin"]}
+              Component={QuizResultDetails}
+            />
+          }
+        />
+        <Route
+          path="/progress"
+          element={
+            <ProtectedRoute
+              allowedRoles={["teacher", "admin"]}
+              Component={Progress}
+            />
+          }
+        />
+
+        <Route
+          path="/chat"
+          element={
+            <ProtectedRoute
+              allowedRoles={["student", "teacher", "admin"]}
+              Component={Chat}
+            />
+          }
+        />
+      </Route>
+
+      <Route path="*" element={<Navigate to="/login" replace />} />
+    </Routes>
+  );
+}
 
 export default function App() {
   return (
     <BrowserRouter>
-      <Routes>
-        <Route path="/login" element={<Login />} />
-        <Route path="/signup" element={<Signup />} />
-
-        <Route
-          element={
-            <ProtectedRoute allowedRoles={["student", "teacher", "admin"]} />
-          }
-        >
-          <Route element={<DefaultLayout />}>
-            <Route path="/" element={<Navigate to="/login" replace />} />
-
-            {/* Protected Routes */}
-            <Route element={<ProtectedRoute allowedRoles={["student"]} />}>
-              <Route path="/student/dashboard" element={<StudentDashboard />} />
-              <Route path="/student/quiz/:quizId" element={<QuizTaker />} />
-              <Route path="/student/results/:resultId" element={<QuizResultDetails />} />
-            </Route>
-            <Route element={<ProtectedRoute allowedRoles={["teacher"]} />}>
-              <Route path="/teacher/dashboard" element={<TeacherDashboard />} />
-              <Route path="/teacher/quiz/new" element={<QuizBuilder />} />
-              <Route path="/teacher/quiz/edit/:quizId" element={<QuizBuilder />} />
-              <Route path="/teacher/class/:classId/overall-averages" element={<ClassAverageScores />} />
-              <Route path="/teacher/class/:classId/quiz/:quizId/submissions" element={<QuizSubmissions />} />
-              <Route
-                path="/teacher/student-progress"
-                element={<StudentProgress />}
-              />
-            </Route>
-            <Route element={<ProtectedRoute allowedRoles={["admin"]} />}>
-              <Route path="/admin/dashboard" element={<AdminDashboard />} />
-            </Route>
-
-            {/* Other routes that might need protection or role-based access */}
-            <Route
-              element={<ProtectedRoute allowedRoles={["teacher", "admin"]} />}
-            >
-              <Route path="/materials" element={<Materials />} />
-              <Route path="/quizzes" element={<Quizzes />} />
-              <Route path="/results" element={<ResultsPage />} />
-              <Route path="/results/:resultId" element={<QuizResultDetails />} />
-              <Route path="/progress" element={<Progress />} />
-            </Route>
-            <Route
-              element={
-                <ProtectedRoute
-                  allowedRoles={["student", "teacher", "admin"]}
-                />
-              }
-            >
-              <Route path="/chat" element={<Chat />} />
-            </Route>
-          </Route>
-        </Route>
-
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
+      <AppContent />
     </BrowserRouter>
   );
 }

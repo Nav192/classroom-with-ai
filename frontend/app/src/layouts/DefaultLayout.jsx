@@ -1,13 +1,21 @@
 import React from "react";
 import { Link, Outlet, useNavigate, useLocation } from "react-router-dom";
-import { Home, Book, Users, BarChart, MessageSquare, LogOut, Search, Bell, User as UserIcon } from 'lucide-react';
+import {
+  Home,
+  Book,
+  Users,
+  BarChart,
+  MessageSquare,
+  LogOut,
+  Search,
+  Bell,
+  User as UserIcon,
+} from "lucide-react";
 
 const navLinks = {
   admin: [
-    { name: "Dashboard", path: "/admin/dashboard", icon: Home },
-    { name: "Materials", path: "/materials", icon: Book },
-    { name: "Users", path: "/admin/users", icon: Users },
-    { name: "Reports", path: "/admin/reports", icon: BarChart },
+    { name: "Dashboard - Users", path: "/admin/dashboard", icon: Home },
+    { name: "Classes", path: "/admin/dashboard?tab=classes", icon: Book },
   ],
   teacher: [
     { name: "Dashboard", path: "/teacher/dashboard", icon: Home },
@@ -26,20 +34,22 @@ const navLinks = {
 };
 
 function Sidebar() {
-  const userRole = localStorage.getItem("user_role");
+  const userRole = localStorage.getItem("role");
   const links = navLinks[userRole] || [];
   const location = useLocation();
 
   return (
     <aside className="w-64 bg-gray-800 text-white p-4 border-r border-gray-700 flex flex-col">
-      <h2 className="text-3xl font-bold mb-8 text-center">E-Learning</h2>
+      <h2 className="text-3xl font-bold mb-8 text-center">
+        E-Learning Platform
+      </h2>
       <nav className="flex flex-col gap-2 flex-grow">
         {links.map((link) => (
           <Link
             key={link.name}
             to={link.path}
             className={`flex items-center gap-3 px-4 py-3 rounded-md transition-colors ${
-              location.pathname === link.path
+              location.pathname + location.search === link.path
                 ? "bg-blue-600 text-white"
                 : "text-gray-400 hover:bg-gray-700 hover:text-white"
             }`}
@@ -59,7 +69,7 @@ function Header() {
   function handleLogout() {
     localStorage.removeItem("access_token");
     localStorage.removeItem("user_id");
-    localStorage.removeItem("user_role");
+    localStorage.removeItem("role");
     navigate("/login");
   }
 

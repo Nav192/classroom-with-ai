@@ -1,64 +1,94 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { Plus, Edit, Trash2, RefreshCw, Users, BookCopy, Search } from "lucide-react";
 import api from "../services/api";
 import UserModal from "../components/UserModal";
 
 // Main Dashboard Component
 export default function AdminDashboard() {
+  console.log("AdminDashboard: Component Rendered");
   const navigate = useNavigate();
+  const location = useLocation();
+  const queryParams = new URLSearchParams(location.search);
+  const initialTab = queryParams.get('tab') || 'users'; // Default to 'users' tab
+  console.log("AdminDashboard: initialTab from query params:", initialTab);
+
   const [user, setUser] = useState(null);
   const [username, setUsername] = useState("");
   const [stats, setStats] = useState({ users: 0, classes: 0, materials: 0 });
 
   useEffect(() => {
+    console.log("AdminDashboard: useEffect triggered.");
     const storedUserId = localStorage.getItem("user_id");
-    const storedUserRole = localStorage.getItem("user_role");
-    if (!storedUserId || storedUserRole !== "admin") {
-      navigate("/login");
-    } else {
+    const storedUserRole = localStorage.getItem("role");
+    
+    console.log("AdminDashboard: storedUserId", storedUserId);
+    console.log("AdminDashboard: storedUserRole", storedUserRole);
+
+    if (storedUserId && storedUserRole === "admin") {
+      console.log("AdminDashboard: User is admin, setting user state.");
       setUser({ id: storedUserId, role: storedUserRole });
-      api.get(`/users/${storedUserId}`).then(res => setUsername(res.data.username));
+      api.get(`/users/${storedUserId}`)
+        .then(res => {
+          console.log("AdminDashboard: Fetched username successfully.", res.data.username);
+          setUsername(res.data.username);
+        })
+        .catch(err => {
+          console.error("AdminDashboard: Failed to fetch username:", err);
+          // Optionally navigate to login if user data fetch fails
+          // navigate("/login");
+        });
 
       const fetchMaterialStats = async () => {
         try {
           const response = await api.get("/admin/materials/count");
+          console.log("AdminDashboard: Fetched material stats.", response.data);
           setStats(prev => ({ ...prev, materials: response.data }));
         } catch (err) {
-          console.error("Failed to fetch material stats:", err);
+          console.error("AdminDashboard: Failed to fetch material stats:", err);
         }
       };
 
       const fetchUserStats = async () => {
         try {
           const response = await api.get("/admin/users/count");
+          console.log("AdminDashboard: Fetched user stats.", response.data);
           setStats(prev => ({ ...prev, users: response.data }));
         } catch (err) {
-          console.error("Failed to fetch user stats:", err);
+          console.error("AdminDashboard: Failed to fetch user stats:", err);
         }
       };
 
       const fetchClassStats = async () => {
         try {
           const response = await api.get("/admin/classes/count");
+          console.log("AdminDashboard: Fetched class stats.", response.data);
           setStats(prev => ({ ...prev, classes: response.data }));
         } catch (err) {
-          console.error("Failed to fetch class stats:", err);
+          console.error("AdminDashboard: Failed to fetch class stats:", err);
         }
       };
 
       fetchMaterialStats();
       fetchUserStats();
       fetchClassStats();
+    } else {
+        console.log("AdminDashboard: Not an admin or missing user ID. This should be handled by ProtectedRoute.");
+        // This case should ideally be handled by ProtectedRoute
+        // but as a fallback, if for some reason user is not admin, navigate to login
+        // navigate("/login"); // Removed this redirect
     }
   }, [navigate]);
 
+  console.log("AdminDashboard: Current user state:", user);
   if (!user) return <div className="p-6 text-center">Loading user profile...</div>;
 
   return (
-    <div className="space-y-6">
+    <div className="bg-gray-100 p-6">
       <DashboardHeader username={username} stats={stats} />
-      <AdminTabs setStats={setStats} />
+      <div className="mt-6">
+        <AdminTabs setStats={setStats} defaultTab={initialTab} />
+      </div>
     </div>
   );
 }
@@ -79,18 +109,26 @@ function DashboardHeader({ username, stats }) {
 }
 
 // Tabs Component
-function AdminTabs({ setStats }) {
-  const [activeTab, setActiveTab] = useState("users");
+function AdminTabs({ setStats, defaultTab }) {
+  console.log("AdminTabs: Component Rendered with defaultTab:", defaultTab);
+  const [activeTab, setActiveTab] = useState(defaultTab);
+
+  // Update activeTab when defaultTab prop changes (e.g., from URL query param)
+  useEffect(() => {
+    console.log("AdminTabs: useEffect triggered. Updating activeTab from", activeTab, "to defaultTab:", defaultTab);
+    setActiveTab(defaultTab);
+  }, [defaultTab]);
 
   return (
     <div>
       <div className="border-b border-gray-200">
         <nav className="-mb-px flex space-x-6" aria-label="Tabs">
-          <button onClick={() => setActiveTab("users")} className={`${activeTab === 'users' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'} whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm`}>User Management</button>
-          <button onClick={() => setActiveTab("classes")} className={`${activeTab === 'classes' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'} whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm`}>Class Management</button>
+          <button onClick={() => { console.log("AdminTabs: Clicking User Management. Setting activeTab to users."); setActiveTab("users"); }} className={`${activeTab === 'users' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'} whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm`}>User Management</button>
+          <button onClick={() => { console.log("AdminTabs: Clicking Class Management. Setting activeTab to classes."); setActiveTab("classes"); }} className={`${activeTab === 'classes' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'} whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm`}>Class Management</button>
         </nav>
       </div>
       <div className="py-6">
+        {console.log("AdminTabs: Final activeTab for rendering:", activeTab)}
         {activeTab === "users" && <UserManagementTab setStats={setStats} />}
         {activeTab === "classes" && <ClassManagementTab setStats={setStats} />}
       </div>

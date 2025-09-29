@@ -15,7 +15,7 @@ export default function StudentDashboard() {
 
   useEffect(() => {
     const storedUserId = localStorage.getItem("user_id");
-    const storedUserRole = localStorage.getItem("user_role");
+    const storedUserRole = localStorage.getItem("role");
     if (!storedUserId || storedUserRole !== "student") {
       navigate("/login");
     } else {
