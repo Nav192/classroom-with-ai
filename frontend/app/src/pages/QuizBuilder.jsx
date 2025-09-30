@@ -172,13 +172,13 @@ export default function QuizBuilder() {
   const handleQuizTypeChange = (e) => {
     const newType = e.target.value;
     setQuizType(newType);
-    const resetQuestions = questions.map(q => ({
+    const updatedQuestions = questions.map(q => ({
         ...q,
         type: newType,
-        options: newType === 'mcq' ? ['', ''] : (newType === 'true_false' ? ['True', 'False'] : undefined),
-        answer: ''
+        options: newType === 'mcq' ? (q.options.length > 0 ? q.options : ['', '']) : (newType === 'true_false' ? ['True', 'False'] : undefined),
+        // Do NOT reset answer here, retain existing answer
     }));
-    setQuestions(resetQuestions);
+    setQuestions(updatedQuestions);
   }
 
   const handleSubmit = async (e, status = 'published') => {
