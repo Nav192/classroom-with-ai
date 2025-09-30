@@ -35,7 +35,7 @@ export default function Signup() {
       const loginData = await loginRes.json();
       localStorage.setItem("access_token", loginData.access_token);
       localStorage.setItem("user_id", loginData.user_id);
-      localStorage.setItem("user_role", role);
+      localStorage.setItem("role", role);
       navigate(`/${role}/dashboard`);
     } catch (err) {
       setError(String(err));

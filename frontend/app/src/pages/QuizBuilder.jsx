@@ -181,7 +181,7 @@ export default function QuizBuilder() {
     setQuestions(resetQuestions);
   }
 
-  const handleSubmit = async (e) => {
+  const handleSubmit = async (e, status = 'published') => {
     e.preventDefault();
     setLoading(true);
     setError('');
@@ -213,16 +213,19 @@ export default function QuizBuilder() {
       visible_to: visibleTo,
       available_from: fromDate ? fromDate.toISOString() : null,
       available_until: untilDate ? untilDate.toISOString() : null,
+      status: status, // Add status to the payload
     };
 
     try {
+      const action = isEditing ? 'updated' : 'created';
+      const finalMessage = `Quiz ${status === 'draft' ? 'saved as draft' : action} successfully! Redirecting to dashboard...`;
+
       if (isEditing) {
         await api.put(`/quizzes/${quizId}`, payload);
-        setMessage('Quiz updated successfully! Redirecting to dashboard...');
       } else {
         await api.post(`/quizzes/${classId}`, payload);
-        setMessage('Quiz created successfully! Redirecting to dashboard...');
       }
+      setMessage(finalMessage);
       setTimeout(() => navigate('/teacher/dashboard'), 2000);
     } catch (err) {
       setError(err.response?.data?.detail || (isEditing ? 'Failed to update quiz.' : 'Failed to create quiz.'));
@@ -421,9 +424,19 @@ export default function QuizBuilder() {
           <button type="button" onClick={addQuestion} className="text-primary font-semibold flex items-center gap-2"><Plus size={16}/> Add Question</button>
 
           <div className="flex items-center justify-end gap-4 pt-6 border-t border-border">
-            <button type="button" onClick={() => navigate('/teacher/dashboard')} className="text-muted-foreground hover:text-foreground">Cancel</button>
-            <button type="submit" disabled={loading || !classId} className="bg-primary text-primary-foreground px-6 py-2 rounded-md hover:bg-primary/90 disabled:opacity-50">
-              {loading ? 'Saving...' : (isEditing ? 'Update Quiz' : 'Save Quiz')}
+            <button type="button" onClick={() => navigate('/teacher/dashboard', { state: { classId: classId, activeTab: 'quizzes' } })} className="bg-gray-200 text-gray-800 px-6 py-2 rounded-md hover:bg-gray-300">
+              Back
+            </button>
+            {!isEditing && (
+              <button type="button" onClick={(e) => handleSubmit(e, 'draft')} disabled={loading || !classId} className="bg-gray-200 text-gray-800 px-6 py-2 rounded-md hover:bg-gray-300 disabled:opacity-50">
+                Save as Draft
+              </button>
+            )}
+            <button type="button" onClick={() => navigate('/teacher/dashboard')} className="bg-gray-200 text-gray-800 px-6 py-2 rounded-md hover:bg-gray-300">
+              Cancel
+            </button>
+            <button type="submit" onClick={(e) => handleSubmit(e, 'published')} disabled={loading || !classId} className="bg-blue-600 text-white px-6 py-2 rounded-md hover:bg-blue-700 disabled:opacity-50">
+              {loading ? 'Saving...' : (isEditing ? 'Update & Publish' : 'Publish Quiz')}
             </button>
           </div>
           {message && <p className="text-sm text-green-600 text-center">{message}</p>}

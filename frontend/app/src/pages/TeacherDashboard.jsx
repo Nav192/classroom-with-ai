@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useEffect, useState, useCallback } from "react";
+import { useNavigate, useLocation } from "react-router-dom";
 import { Users } from "lucide-react";
 import api from "../services/api";
 import CreateClassModal from "../components/CreateClassModal";
@@ -12,7 +12,7 @@ import TeacherClassManagementTab from "../components/teacher/TeacherClassManagem
 export default function TeacherDashboard() {
   const initialUser = () => {
     const storedUserId = localStorage.getItem("user_id");
-    const storedUserRole = localStorage.getItem("user_role");
+    const storedUserRole = localStorage.getItem("role");
     if (storedUserId && storedUserRole === "teacher") {
       return { id: storedUserId, role: storedUserRole };
     }
@@ -20,6 +20,7 @@ export default function TeacherDashboard() {
   };
   const [user, setUser] = useState(initialUser);
   const navigate = useNavigate();
+  const location = useLocation(); // Use useLocation hook
   const [username, setUsername] = useState("");
   const [myClasses, setMyClasses] = useState([]);
   const [loadingClasses, setLoadingClasses] = useState(true);
@@ -27,6 +28,7 @@ export default function TeacherDashboard() {
   const [selectedClassDetails, setSelectedClassDetails] = useState(null);
   const [isCreateClassModalOpen, setIsCreateClassModalOpen] = useState(false);
   const [activeMainTab, setActiveMainTab] = useState("active"); // State for the main tabs
+  const [initialClassTab, setInitialClassTab] = useState(null); // New state for initial active tab in ClassTabs
 
   useEffect(() => {
     if (!user) {
@@ -38,6 +40,40 @@ export default function TeacherDashboard() {
         .then((res) => setUsername(res.data.username));
     }
   }, [user, navigate]);
+
+  // Effect to handle navigation state for class selection and tab activation
+  useEffect(() => {
+    if (location.state && location.state.classId) {
+      const { classId, activeTab } = location.state;
+      let foundClass = null;
+
+      // Try to find the class in already fetched myClasses
+      if (myClasses.length > 0) {
+        foundClass = myClasses.find(c => c.id === classId);
+      }
+
+      if (foundClass) {
+        setSelectedClassDetails(foundClass);
+        if (activeTab) {
+          setInitialClassTab(activeTab);
+        }
+        // Clear state to prevent re-triggering on subsequent renders
+        navigate(location.pathname, { replace: true, state: {} });
+      } else if (!loadingClasses) {
+        // If not found in myClasses and myClasses are loaded, fetch it
+        api.get(`/classes/${classId}`)
+          .then(res => {
+            setSelectedClassDetails(res.data);
+            if (activeTab) {
+              setInitialClassTab(activeTab);
+            }
+            // Clear state to prevent re-triggering on subsequent renders
+            navigate(location.pathname, { replace: true, state: {} });
+          })
+          .catch(err => console.error("Failed to fetch class details from state", err));
+      }
+    }
+  }, [location.state, myClasses, loadingClasses, navigate]);
 
   const fetchMyClasses = async () => {
     setLoadingClasses(true);
@@ -95,6 +131,7 @@ export default function TeacherDashboard() {
             selectedClass={selectedClassDetails}
             onBackToClassSelection={() => setSelectedClassDetails(null)}
             username={username}
+            initialActiveTab={initialClassTab} // Pass initialActiveTab to ClassTabs
           />
         ) : (
           <div className="bg-white p-6 rounded-lg shadow-md border border-gray-200">

@@ -54,6 +54,9 @@ def login(payload: LoginRequest, sb_admin: Client = Depends(get_supabase_admin))
 
         return LoginResponse(access_token=res.session.access_token, user_id=res.user.id, role=user_role, username=user_username)
     except Exception as exc:
+        print(f"Login failed. Exception: {exc}")
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=401, detail=str(exc))
 
 

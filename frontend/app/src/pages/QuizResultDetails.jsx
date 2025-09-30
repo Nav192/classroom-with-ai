@@ -42,7 +42,7 @@ const QuizResultDetails = () => {
 
     const { quiz_title, score, total_questions, submitted_at, details, max_attempts, attempts_taken, available_until } = resultDetails;
 
-    const userRole = localStorage.getItem("user_role");
+    const userRole = localStorage.getItem("role");
     const isTeacherOrAdmin = userRole === 'teacher' || userRole === 'admin';
 
     const canViewDetails = isTeacherOrAdmin || (available_until && new Date() > new Date(available_until));

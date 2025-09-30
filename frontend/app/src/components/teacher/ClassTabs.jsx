@@ -13,8 +13,9 @@ function ClassTabs({
   onDataChange,
   username,
   onBackToClassSelection,
+  initialActiveTab, // New prop
 }) {
-  const [activeTab, setActiveTab] = useState("statistics");
+  const [activeTab, setActiveTab] = useState(initialActiveTab || "statistics");
 
   const tabs = [
     { id: "statistics", label: "Statistics" },

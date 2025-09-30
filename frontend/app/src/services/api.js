@@ -26,7 +26,7 @@ api.interceptors.response.use(
       // Hapus data sesi dari local storage
       localStorage.removeItem('access_token');
       localStorage.removeItem('user_id');
-      localStorage.removeItem('user_role');
+      localStorage.removeItem('role');
       // Arahkan pengguna kembali ke halaman login
       window.location.href = '/login';
     }

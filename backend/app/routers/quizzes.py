@@ -28,6 +28,7 @@ class QuizIn(BaseModel):
     weight: int = 100
     available_from: Optional[datetime] = None
     available_until: Optional[datetime] = None
+    status: str = 'published'
 
 class QuestionOut(QuestionIn):
     id: UUID
@@ -119,10 +120,10 @@ def create_quiz(
             "type": payload.type,
             "duration_minutes": payload.duration_minutes,
             "max_attempts": payload.max_attempts,
-            "user_id": str(teacher_id),
             "weight": payload.weight,
             "available_from": payload.available_from.isoformat() if payload.available_from else None,
             "available_until": payload.available_until.isoformat() if payload.available_until else None,
+            "status": payload.status,
         }).execute()
         
         if not quiz_res.data:
@@ -173,6 +174,7 @@ def update_quiz(
             "weight": payload.weight,
             "available_from": payload.available_from.isoformat() if payload.available_from else None,
             "available_until": payload.available_until.isoformat() if payload.available_until else None,
+            "status": payload.status,
         }
         sb_admin.table("quizzes").update(updated_quiz_data).eq("id", str(quiz_id)).execute()
 
@@ -339,7 +341,7 @@ def list_quizzes(
         response = sb.rpc('get_visible_quizzes_for_student', {
             'class_id_param': str(class_id),
             'student_id_param': str(student_id)
-        }).execute()
+        }).eq('status', 'published').execute()
         return response.data or []
 
 @router.get("/{quiz_id}/details", response_model=QuizWithQuestions)

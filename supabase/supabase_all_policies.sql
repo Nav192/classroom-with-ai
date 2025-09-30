@@ -362,11 +362,13 @@ ADD COLUMN weight INTEGER DEFAULT 100 NOT NULL;
 
 DROP TABLE public.quiz_weights;
 
-1 CREATE POLICY "Allow full access for postgres"                                               │
- │    2 ON public.quiz_attempts                                                                      │
- │    3 FOR ALL                                                                                      │
- │    4 TO postgres                                                                                  │
- │    5 USING (true)                                                                                 │
- │    6 WITH CHECK (true);
+CREATE POLICY "Allow full access for postgres"                                               
+ON public.quiz_attempts                                                                      
+FOR ALL                                                                                      
+TO postgres                                                                                  
+USING (true)                                                                                 
+WITH CHECK (true);
 
 
+ALTER TABLE public.quizzes
+ADD COLUMN status TEXT CHECK (status IN ('draft', 'published')) DEFAULT 'draft' NOT NULL;

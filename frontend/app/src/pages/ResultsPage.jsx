@@ -14,7 +14,7 @@ export default function ResultsPage() {
 
   useEffect(() => {
     const storedUserId = localStorage.getItem("user_id");
-    const storedUserRole = localStorage.getItem("user_role");
+    const storedUserRole = localStorage.getItem("role");
 
     if (!storedUserId || storedUserRole !== "teacher") {
       navigate("/login"); // Redirect to login if not authenticated as teacher
