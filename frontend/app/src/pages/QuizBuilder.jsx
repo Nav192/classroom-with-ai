@@ -14,12 +14,20 @@ export default function QuizBuilder() {
   const [topic, setTopic] = useState('');
   const [duration, setDuration] = useState(30);
   const [maxAttempts, setMaxAttempts] = useState(2);
-  const [weight, setWeight] = useState(100); // New state for quiz weight
+  const [weight, setWeight] = useState(0); // New state for quiz weight
   const [quizType, setQuizType] = useState('mcq');
   const [questions, setQuestions] = useState([{ text: '', options: ['', ''], answer: '' }]);
   const [students, setStudents] = useState([]);
   const [visibleTo, setVisibleTo] = useState([]);
   const [studentSearchTerm, setStudentSearchTerm] = useState('');
+  const [totalUsedWeight, setTotalUsedWeight] = useState(0);
+  const [currentQuizWeight, setCurrentQuizWeight] = useState(0);
+
+  // Schedule states
+  const [availableFrom, setAvailableFrom] = useState('');
+  const [availableFromSec, setAvailableFromSec] = useState('00');
+  const [availableUntil, setAvailableUntil] = useState('');
+  const [availableUntilSec, setAvailableUntilSec] = useState('00');
   
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -30,25 +38,23 @@ export default function QuizBuilder() {
   const [aiError, setAiError] = useState('');
 
   useEffect(() => {
-    const fetchStudents = async (id) => {
+    const fetchClassData = async (classId) => {
       try {
-        const res = await api.get(`/classes/${id}/students`);
-        setStudents(res.data || []);
-      } catch (err) {
-        console.error("Failed to fetch students for visibility settings", err);
-      }
-    };
+        // Fetch class name
+        const classRes = await api.get(`/classes/${classId}`);
+        setClassName(classRes.data.class_name);
 
-    const fetchClassName = async (id) => {
-      console.log("fetchClassName called with classId:", id); // DEBUG LOG
-      try {
-        const res = await api.get(`/classes/${id}`);
-        console.log("fetchClassName API response:", res.data); // DEBUG LOG
-        setClassName(res.data.class_name);
-        console.log("className set to:", res.data.class_name); // DEBUG LOG
+        // Fetch students
+        const studentsRes = await api.get(`/classes/${classId}/students`);
+        setStudents(studentsRes.data || []);
+
+        // Fetch total quiz weight
+        const weightRes = await api.get(`/classes/${classId}/quiz-weights`);
+        setTotalUsedWeight(weightRes.data.total_weight || 0);
+
       } catch (err) {
-        console.error("Failed to fetch class name", err);
-        setClassName("Unknown Class");
+        console.error("Failed to fetch class data", err);
+        setError("Failed to load class details.");
       }
     };
 
@@ -57,22 +63,31 @@ export default function QuizBuilder() {
       api.get(`/quizzes/${quizId}/details`)
         .then(res => {
           const quizData = res.data;
-          console.log("Quiz details fetched:", quizData); // DEBUG LOG
+          setClassId(quizData.class_id);
           setTopic(quizData.topic);
           setDuration(quizData.duration_minutes);
           setMaxAttempts(quizData.max_attempts || 2);
-          setWeight(quizData.weight || 100); // Set weight from fetched data
+          const initialWeight = quizData.weight || 0;
+          setWeight(initialWeight);
+          setCurrentQuizWeight(initialWeight);
           setQuizType(quizData.type);
           setQuestions(quizData.questions.map(q => ({ ...q, id: q.id || undefined })));
-          setClassId(quizData.class_id);
-          setVisibleTo(quizData.visible_to || []); // Populate visibility state
+          setVisibleTo(quizData.visible_to || []);
+
+          if (quizData.available_from) {
+              const fromDate = new Date(quizData.available_from);
+              setAvailableFrom(new Date(fromDate.getTime() - fromDate.getTimezoneOffset() * 60000).toISOString().slice(0, 16));
+              setAvailableFromSec(fromDate.getSeconds().toString().padStart(2, '0'));
+          }
+          if (quizData.available_until) {
+              const untilDate = new Date(quizData.available_until);
+              setAvailableUntil(new Date(untilDate.getTime() - untilDate.getTimezoneOffset() * 60000).toISOString().slice(0, 16));
+              setAvailableUntilSec(untilDate.getSeconds().toString().padStart(2, '0'));
+          }
+
           if (quizData.class_id) {
-            setClassName(quizData.classes?.name || ''); // Set class name from quiz data
-            if (!quizData.classes?.name) { // Fallback if name not embedded
-              console.log("Quiz data missing class name, calling fetchClassName fallback."); // DEBUG LOG
-              fetchClassName(quizData.class_id);
-            }
-            fetchStudents(quizData.class_id);
+            setClassName(quizData.classes?.name || 'Loading...');
+            fetchClassData(quizData.class_id);
           }
         })
         .catch(err => {
@@ -85,14 +100,14 @@ export default function QuizBuilder() {
       const id = params.get('classId');
       if (id) {
         setClassId(id);
-        console.log("Create mode: calling fetchClassName with classId from URL:", id); // DEBUG LOG
-        fetchClassName(id); // Fetch class name
-        fetchStudents(id); // Fetch students
+        fetchClassData(id);
       } else {
         navigate('/teacher/dashboard');
       }
     }
   }, [quizId, isEditing, navigate, location.search]);
+
+  const maxWeight = 100 - totalUsedWeight + (isEditing ? currentQuizWeight : 0);
 
   const handleQuestionChange = (index, field, value) => {
     const newQuestions = [...questions];
@@ -172,6 +187,16 @@ export default function QuizBuilder() {
     setError('');
     setMessage('');
 
+    const fromDate = availableFrom ? new Date(availableFrom) : null;
+    if (fromDate) {
+        fromDate.setSeconds(parseInt(availableFromSec, 10) || 0);
+    }
+
+    const untilDate = availableUntil ? new Date(availableUntil) : null;
+    if (untilDate) {
+        untilDate.setSeconds(parseInt(availableUntilSec, 10) || 0);
+    }
+
     const payload = {
       topic,
       type: quizType,
@@ -185,7 +210,9 @@ export default function QuizBuilder() {
         options: q.options,
         answer: q.answer
       })),
-      visible_to: visibleTo
+      visible_to: visibleTo,
+      available_from: fromDate ? fromDate.toISOString() : null,
+      available_until: untilDate ? untilDate.toISOString() : null,
     };
 
     try {
@@ -267,12 +294,15 @@ export default function QuizBuilder() {
                   type="number"
                   id="weight"
                   value={weight}
-                  onChange={e => setWeight(parseInt(e.target.value, 10))}
+                  onChange={e => setWeight(parseInt(e.target.value, 10) || 0)}
                   className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
                   min="0"
-                  max="100"
+                  max={maxWeight}
                   required
                 />
+                <p className="text-sm text-gray-500 mt-1">
+                  Bobot maksimal yang tersedia untuk kuis ini adalah <strong>{maxWeight}%</strong>.
+                </p>
               </div>
                 <div className="space-y-2">
                     <label htmlFor="maxAttempts" className="text-sm font-medium">Max Attempts</label>
@@ -285,6 +315,24 @@ export default function QuizBuilder() {
                         <option value="true_false">True/False</option>
                         <option value="essay">Essay</option>
                     </select>
+                </div>
+            </div>
+
+            <h3 className="text-lg font-semibold pt-4 border-t border-border">Quiz Schedule</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-center">
+                <div className="space-y-2">
+                    <label htmlFor="availableFrom" className="text-sm font-medium">Available From</label>
+                    <div className="flex items-center gap-2">
+                        <input type="datetime-local" id="availableFrom" value={availableFrom} onChange={e => setAvailableFrom(e.target.value)} className="w-full px-3 py-2 bg-input border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-primary"/>
+                        <input type="number" min="0" max="59" value={availableFromSec} onChange={e => setAvailableFromSec(e.target.value)} className="w-20 px-3 py-2 bg-input border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-primary" placeholder="SS"/>
+                    </div>
+                </div>
+                <div className="space-y-2">
+                    <label htmlFor="availableUntil" className="text-sm font-medium">Available Until</label>
+                    <div className="flex items-center gap-2">
+                        <input type="datetime-local" id="availableUntil" value={availableUntil} onChange={e => setAvailableUntil(e.target.value)} className="w-full px-3 py-2 bg-input border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-primary"/>
+                        <input type="number" min="0" max="59" value={availableUntilSec} onChange={e => setAvailableUntilSec(e.target.value)} className="w-20 px-3 py-2 bg-input border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-primary" placeholder="SS"/>
+                    </div>
                 </div>
             </div>
           </fieldset>

@@ -227,83 +227,8 @@ function QuizCard({ quiz, fetchQuizzes, setError }) {
             </span>
           </label>
         </div>
-        <button
-          onClick={() => setIsSettingsOpen(!isSettingsOpen)}
-          className="bg-gray-100 text-gray-700 px-3 py-1 rounded-md hover:bg-gray-200 text-sm font-medium"
-        >
-          {isSettingsOpen ? "Hide Settings" : "Schedule"}
-        </button>
       </div>
 
-      {/* Collapsible Settings Section */}
-      {isSettingsOpen && (
-        <div className="mt-4 pt-4 border-t border-gray-200">
-          <h4 className="font-semibold text-md mb-3">Quiz Schedule</h4>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
-            <div>
-              <label
-                htmlFor={`from-${quiz.id}`}
-                className="block text-sm font-medium text-gray-700 mb-1"
-              >
-                Available From
-              </label>
-              <div className="flex items-center gap-2">
-                <input
-                  type="datetime-local"
-                  id={`from-${quiz.id}`}
-                  value={availableFrom}
-                  onChange={(e) => setAvailableFrom(e.target.value)}
-                  className="w-full px-3 py-2 bg-white border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                />
-                <input
-                  type="number"
-                  min="0"
-                  max="59"
-                  value={availableFromSec}
-                  onChange={(e) => setAvailableFromSec(e.target.value)}
-                  className="w-20 px-3 py-2 bg-white border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                  placeholder="SS"
-                />
-              </div>
-            </div>
-            <div>
-              <label
-                htmlFor={`until-${quiz.id}`}
-                className="block text-sm font-medium text-gray-700 mb-1"
-              >
-                Available Until
-              </label>
-              <div className="flex items-center gap-2">
-                <input
-                  type="datetime-local"
-                  id={`until-${quiz.id}`}
-                  value={availableUntil}
-                  onChange={(e) => setAvailableUntil(e.target.value)}
-                  className="w-full px-3 py-2 bg-white border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                />
-                <input
-                  type="number"
-                  min="0"
-                  max="59"
-                  value={availableUntilSec}
-                  onChange={(e) => setAvailableUntilSec(e.target.value)}
-                  className="w-20 px-3 py-2 bg-white border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                  placeholder="SS"
-                />
-              </div>
-            </div>
-          </div>
-          <div className="flex justify-end mt-4">
-            <button
-              onClick={handleSaveSettings}
-              disabled={isSaving}
-              className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 disabled:bg-blue-400 flex items-center justify-center gap-2 text-sm"
-            >
-              {isSaving ? "Saving..." : "Save Settings"}
-            </button>
-          </div>
-        </div>
-      )}
        {isSubmissionsModalOpen && (
         <QuizSubmissionsModal
             quizId={quiz.id}

@@ -333,6 +333,7 @@ def leave_class(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/{class_id}/students", response_model=List[StudentResponse], summary="Get all students in a class")
 def get_students_in_class(
     class_id: UUID,
     user: dict = Depends(get_current_user),
@@ -381,7 +382,35 @@ def get_students_in_class(
                     "class_name": class_name
                 })
         
+        
         return formatted_students
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=traceback.format_exc())
+
+@router.get("/{class_id}/quiz-weights", summary="Get total quiz weight for a class")
+def get_class_quiz_weights(
+    class_id: UUID,
+    exclude_quiz_id: Optional[UUID] = None,
+    user: dict = Depends(get_current_user),
+    db: supabase.client.Client = Depends(get_supabase)
+):
+    """
+    Calculates the sum of weights of all quizzes in a class.
+    Optionally excludes a specific quiz from the calculation.
+    """
+    # Authorization check: Ensure user is a member of the class
+    member_res = db.table("class_members").select("user_id").eq("class_id", str(class_id)).eq("user_id", user.get("id")).execute()
+    if not member_res.data:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You are not a member of this class.")
+
+    query = db.table("quizzes").select("weight").eq("class_id", str(class_id))
+    
+    if exclude_quiz_id:
+        query = query.not_.eq("id", str(exclude_quiz_id))
+        
+    quizzes_res = query.execute()
+    
+    total_weight = sum(q['weight'] for q in quizzes_res.data if q.get('weight') is not None)
+    
+    return {"total_weight": total_weight}

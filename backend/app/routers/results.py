@@ -103,6 +103,7 @@ class QuizResultDetailOut(BaseModel):
     submitted_at: datetime
     max_attempts: Optional[int] = None
     attempts_taken: Optional[int] = None
+    available_until: Optional[datetime] = None
     details: List[ResultAnswerDetailOut]
 
 class TeacherQuizResultDetailOut(BaseModel):
@@ -140,7 +141,7 @@ def get_quiz_result_details(
     user_role = current_user.get("role")
 
     # 2. Fetch quiz details for max_attempts and authorization
-    quiz_res = sb.table("quizzes").select("id, topic, user_id, class_id, max_attempts").eq("id", result_data['quiz_id']).single().execute()
+    quiz_res = sb.table("quizzes").select("id, topic, user_id, class_id, max_attempts, available_until").eq("id", result_data['quiz_id']).single().execute()
     if not quiz_res.data:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Associated quiz not found.")
     
@@ -183,23 +184,31 @@ def get_quiz_result_details(
 
     # If user is teacher/admin, calculate difficulty levels
     if user_role == 'teacher' or user_role == 'admin':
-        # Fetch all result_ids for this quiz
-        all_result_ids_res = sb.table("results").select("id").eq("quiz_id", quiz_data['id']).execute()
-        all_result_ids = [r['id'] for r in all_result_ids_res.data] if all_result_ids_res.data else []
+        # Identify the latest attempt for each student
+        all_results_res = sb.table("results").select("id, user_id, created_at").eq("quiz_id", quiz_data['id']).order("created_at", desc=True).execute()
+        all_results = all_results_res.data or []
 
+        latest_results = {} # {user_id: latest_result_object}
+        for result in all_results:
+            user_id = result['user_id']
+            if user_id not in latest_results:
+                latest_results[user_id] = result
+        
+        latest_result_ids = [res['id'] for res in latest_results.values()]
+
+        # Fetch answers only from these latest attempts
         all_quiz_answers = []
-        if all_result_ids:
-            # Fetch all quiz answers associated with these results
-            all_quiz_answers_res = sb.table("quiz_answers").select("question_id, is_correct").in_("result_id", all_result_ids).execute()
+        if latest_result_ids:
+            all_quiz_answers_res = sb.table("quiz_answers").select("question_id, is_correct").in_("result_id", latest_result_ids).execute()
             all_quiz_answers = all_quiz_answers_res.data or []
 
+        # Calculate stats based on the filtered answers
         question_stats = {}
         for ans in all_quiz_answers:
             q_id = str(ans['question_id'])
             if q_id not in question_stats:
                 question_stats[q_id] = {'total_attempts': 0, 'correct_attempts': 0}
             
-            # Only count if is_correct is not None (i.e., it was an auto-gradable question or manually graded)
             if ans['is_correct'] is not None:
                 question_stats[q_id]['total_attempts'] += 1
                 if ans['is_correct']:
@@ -277,6 +286,7 @@ def get_quiz_result_details(
             submitted_at=result_data['created_at'],
             max_attempts=max_attempts,
             attempts_taken=attempts_taken,
+            available_until=quiz_data.get('available_until'),
             details=detailed_results,
         )
 

@@ -274,32 +274,16 @@ def get_student_progress_in_class(
             
             quizzes_attempted = len(highest_student_results)
             
-            # Calculate weighted average quiz score
-            weighted_sum_scores = 0
-            total_weights = 0
+            # Calculate final score from weighted quizzes
+            final_score = 0
             for result in highest_student_results:
                 quiz_id_str = result['quiz_id']
                 quiz_score = result['score']
-                quiz_weight = class_quiz_weights.get(quiz_id_str, 100) # Default to 100 if weight not found
-                print(f"DEBUG: Processing result: quiz_id_str={quiz_id_str}, quiz_score={quiz_score}, quiz_weight={quiz_weight}")
+                # The weight is stored as a percentage (e.g., 10 for 10%)
+                quiz_weight = class_quiz_weights.get(quiz_id_str, 0) # Default to 0 if weight not found
 
-                weighted_sum_scores += (quiz_score * quiz_weight)
-                total_weights += quiz_weight
-            
-            quiz_average_percentage = 0.0 # Default to 0.0 if no quizzes attempted
-            if total_weights > 0:
-                quiz_average_percentage = weighted_sum_scores / total_weights
-            
-            # Calculate materials progress percentage
-            materials_progress_percentage = 0.0
-            if total_materials > 0:
-                materials_progress_percentage = (mats_completed / total_materials) * 100
-
-            # Calculate overall progress percentage
-            overall_progress_percentage = 0.0
-            # Check if there are any materials or quizzes to progress on
-            if total_materials > 0 or len(highest_student_results) > 0:
-                overall_progress_percentage = (materials_progress_percentage + quiz_average_percentage) / 2
+                if quiz_score is not None:
+                    final_score += quiz_score * (quiz_weight / 100.0)
 
             student_details.append(StudentProgressDetail(
                 user_id=student_id,
@@ -307,7 +291,7 @@ def get_student_progress_in_class(
                 email=profile['email'],
                 materials_completed=mats_completed,
                 quizzes_attempted=quizzes_attempted,
-                average_score=round(overall_progress_percentage, 2) # Assign overall progress to average_score
+                average_score=round(final_score, 2) # Assign the calculated final score
             ))
 
         return StudentProgressDetailsResponse(total_materials=total_materials, student_details=student_details)

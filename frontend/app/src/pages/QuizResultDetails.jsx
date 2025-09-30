@@ -40,12 +40,12 @@ const QuizResultDetails = () => {
         return <Alert severity="info">No quiz result details found.</Alert>;
     }
 
-    const { quiz_title, score, total_questions, submitted_at, details, max_attempts, attempts_taken } = resultDetails;
+    const { quiz_title, score, total_questions, submitted_at, details, max_attempts, attempts_taken, available_until } = resultDetails;
 
     const userRole = localStorage.getItem("user_role");
     const isTeacherOrAdmin = userRole === 'teacher' || userRole === 'admin';
 
-    const canViewDetails = isTeacherOrAdmin || (attempts_taken >= max_attempts);
+    const canViewDetails = isTeacherOrAdmin || (available_until && new Date() > new Date(available_until));
     const attemptsRemaining = max_attempts - attempts_taken;
 
     return (
@@ -61,9 +61,9 @@ const QuizResultDetails = () => {
                 )}
             </Box>
 
-            {!canViewDetails && max_attempts !== null && (
+            {!canViewDetails && (
                 <Alert severity="info" sx={{ mb: 3 }}>
-                    You have {attemptsRemaining} attempt(s) remaining. Detailed answers will be shown after all attempts are used.
+                    Detailed answers will be shown after the quiz schedule ends.
                 </Alert>
             )}
 
@@ -112,7 +112,7 @@ const QuizResultDetails = () => {
                     </Card>
                 ))
             ) : (
-                <Alert severity="warning">Complete all attempts to view detailed answers.</Alert>
+                <Alert severity="warning">The quiz schedule has not ended yet.</Alert>
             )}
         </Box>
     );

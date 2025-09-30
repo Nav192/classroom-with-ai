@@ -26,6 +26,8 @@ class QuizIn(BaseModel):
     questions: List[QuestionIn]
     visible_to: Optional[List[UUID]] = None
     weight: int = 100
+    available_from: Optional[datetime] = None
+    available_until: Optional[datetime] = None
 
 class QuestionOut(QuestionIn):
     id: UUID
@@ -119,6 +121,8 @@ def create_quiz(
             "max_attempts": payload.max_attempts,
             "user_id": str(teacher_id),
             "weight": payload.weight,
+            "available_from": payload.available_from.isoformat() if payload.available_from else None,
+            "available_until": payload.available_until.isoformat() if payload.available_until else None,
         }).execute()
         
         if not quiz_res.data:
@@ -167,6 +171,8 @@ def update_quiz(
             "duration_minutes": payload.duration_minutes,
             "max_attempts": payload.max_attempts,
             "weight": payload.weight,
+            "available_from": payload.available_from.isoformat() if payload.available_from else None,
+            "available_until": payload.available_until.isoformat() if payload.available_until else None,
         }
         sb_admin.table("quizzes").update(updated_quiz_data).eq("id", str(quiz_id)).execute()
 
