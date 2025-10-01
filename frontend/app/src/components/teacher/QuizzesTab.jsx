@@ -2,8 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../../services/api';
 import { Plus, Pencil, Trash2, Copy } from 'lucide-react';
-import QuizSubmissionsModal from '../QuizSubmissionsModal';
-
 function QuizzesTab({ classId }) {
   const [quizzes, setQuizzes] = useState([]);
   const [loadingQuizzes, setLoadingQuizzes] = useState(true);
@@ -43,6 +41,7 @@ function QuizzesTab({ classId }) {
             <QuizCard
               key={quiz.id}
               quiz={quiz}
+              classId={classId}
               fetchQuizzes={fetchQuizzes}
               setError={setError}
             />
@@ -60,9 +59,8 @@ function QuizzesTab({ classId }) {
   );
 }
 
-function QuizCard({ quiz, fetchQuizzes, setError }) {
+function QuizCard({ quiz, classId, fetchQuizzes, setError }) {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [isSubmissionsModalOpen, setIsSubmissionsModalOpen] = useState(false);
   const [isActive, setIsActive] = useState(quiz.is_active);
 
   const toLocalISOString = (dateString) => {
@@ -185,12 +183,12 @@ function QuizCard({ quiz, fetchQuizzes, setError }) {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <button
-            onClick={() => setIsSubmissionsModalOpen(true)}
+          <Link
+            to={`/teacher/class/${classId}/quiz/${quiz.id}/submissions`}
             className="bg-blue-100 text-blue-700 px-3 py-1 rounded-md hover:bg-blue-200 text-sm font-medium"
           >
             View Details
-          </button>
+          </Link>
           <Link
             to={`/teacher/quiz/edit/${quiz.id}`}
             className="p-2 text-gray-500 hover:text-blue-600 transition-colors"
@@ -228,16 +226,6 @@ function QuizCard({ quiz, fetchQuizzes, setError }) {
           </label>
         </div>
       </div>
-
-       {isSubmissionsModalOpen && (
-        <QuizSubmissionsModal
-            quizId={quiz.id}
-            classId={quiz.class_id}
-            quizTitle={quiz.topic}
-            open={isSubmissionsModalOpen}
-            onClose={() => setIsSubmissionsModalOpen(false)}
-        />
-    )}
     </div>
   );
 }

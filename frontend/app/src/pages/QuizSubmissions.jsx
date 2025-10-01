@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { useParams, Link, useLocation } from 'react-router-dom';
+import { useParams, Link } from 'react-router-dom';
 import api from '../services/api';
 import { 
     Box, 
@@ -19,15 +19,13 @@ import {
 
 const QuizSubmissions = () => {
     const { classId, quizId } = useParams();
-    const location = useLocation();
-    const quizTitle = location.state?.quizTitle || 'Submissions';
-
     const [submissions, setSubmissions] = useState([]);
+    const [quiz, setQuiz] = useState(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
 
     useEffect(() => {
-        const fetchSubmissions = async () => {
+        const fetchData = async () => {
             if (!classId || !quizId) {
                 setError('Class ID or Quiz ID is missing.');
                 setLoading(false);
@@ -35,18 +33,22 @@ const QuizSubmissions = () => {
             }
             try {
                 setLoading(true);
-                const response = await api.get(`/results/class/${classId}/quiz/${quizId}`);
-                setSubmissions(response.data || []);
+                const [submissionsResponse, quizResponse] = await Promise.all([
+                    api.get(`/results/class/${classId}/quiz/${quizId}`),
+                    api.get(`/quizzes/${quizId}/details`)
+                ]);
+                setSubmissions(submissionsResponse.data || []);
+                setQuiz(quizResponse.data || null);
                 setError('');
             } catch (err) {
-                setError(err.response?.data?.detail || 'Failed to load quiz submissions.');
+                setError(err.response?.data?.detail || 'Failed to load data.');
                 console.error(err);
             } finally {
                 setLoading(false);
             }
         };
 
-        fetchSubmissions();
+        fetchData();
     }, [classId, quizId]);
 
     if (loading) {
@@ -59,7 +61,7 @@ const QuizSubmissions = () => {
 
     return (
         <Box sx={{ p: 3 }}>
-            <Typography variant="h4" gutterBottom>Submissions for: {quizTitle}</Typography>
+            <Typography variant="h4" gutterBottom>Submissions for: {quiz ? quiz.topic : 'Quiz'}</Typography>
             <TableContainer component={Paper}>
                 <Table aria-label="quiz submissions table">
                     <TableHead>
