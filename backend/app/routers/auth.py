@@ -80,3 +80,17 @@ def signup(payload: RegisterRequest, sb: Client = Depends(get_supabase)):
         print(f"Error during signup: {exc}")
         traceback.print_exc()
         raise HTTPException(status_code=400, detail=f"Database error saving new user: {exc}")
+
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+@router.post("/forgot-password", status_code=status.HTTP_200_OK)
+def forgot_password(payload: ForgotPasswordRequest, sb: Client = Depends(get_supabase)):
+    try:
+        sb.auth.reset_password_for_email(
+            email=payload.email,
+            options={"redirect_to": "http://localhost:3000/reset-password"}
+        )
+        return {"message": "If a user with this email exists, a password reset link has been sent."}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

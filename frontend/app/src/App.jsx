@@ -25,6 +25,7 @@ import StudentProgress from "./pages/StudentProgress.jsx";
 import ClassAverageScores from "./pages/ClassAverageScores.jsx";
 import QuizSubmissions from "./pages/QuizSubmissions.jsx";
 import QuizResultDetails from "./pages/QuizResultDetails.jsx";
+import ResetPassword from "./pages/ResetPassword.jsx";
 import ForgotPassword from "./pages/ForgotPassword.jsx";
 import AdminLogin from "./pages/AdminLogin.jsx";
 
@@ -83,6 +84,7 @@ function AppContent() {
       <Route path="/signup" element={<Signup />} />
       <Route path="/admin-login" element={<AdminLogin />} />
       <Route path="/forgot-password" element={<ForgotPassword />} />
+      <Route path="/reset-password" element={<ResetPassword />} />
 
       <Route element={<DefaultLayout />}>
         <Route
