@@ -19,6 +19,7 @@ class UserResponse(BaseModel):
     username: str
     email: EmailStr
     role: str
+    email_confirmed_at: str | None = None # Add this field
     class Config:
         from_attributes = True
 
@@ -44,19 +45,17 @@ class ClassAdminResponse(BaseModel):
     class Config:
         from_attributes = True
 
-# --- User Management Endpoints ---
+class ClassMemberResponse(BaseModel):
+    id: UUID
+    username: str
+    email: EmailStr
 
-@router.get("/users", response_model=List[UserResponse], summary="List all users")
-def list_users(sb: Client = Depends(get_supabase_admin)):
-    try:
-        response = sb.table("profiles").select("id, email, role, username").execute()
-        users_data = response.data or []
-        for user in users_data:
-            if user.get("username") is None:
-                user["username"] = ""
-        return users_data
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    class Config:
+        from_attributes = True
+
+# ... (rest of the file)
+
+
 
 @router.get("/users/count", summary="Get total count of users")
 def get_users_count(sb: Client = Depends(get_supabase_admin)):
@@ -220,15 +219,27 @@ class ClassMemberResponse(BaseModel):
     class Config:
         from_attributes = True
 
+@router.get("/users", response_model=List[UserResponse], summary="List all users")
+def list_users(sb: Client = Depends(get_supabase_admin)):
+    try:
+        response = sb.table("profiles").select("id, email, role, username").execute()
+        users_data = response.data or []
+        for user in users_data:
+            if user.get("username") is None:
+                user["username"] = ""
+        return users_data
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @router.get("/classes/{class_id}/students", response_model=List[ClassMemberResponse], summary="List all students in a specific class")
 def list_class_students(class_id: UUID, sb: Client = Depends(get_supabase_admin)):
     try:
         # This query joins class_members with profiles to get student details
-        response = sb.table("class_members").select("profiles(id, username, email)").eq("class_id", str(class_id)).execute()
+        response = sb.table("class_members").select("profiles(id, username, email, role)").eq("class_id", str(class_id)).execute()
         
         # The result is a list of dictionaries, where each dictionary has a 'profiles' key
-        # We need to extract the profile data from each item
-        students_data = [item['profiles'] for item in response.data if item.get('profiles')]
+        # We need to extract the profile data from each item and filter by role
+        students_data = [item['profiles'] for item in response.data if item.get('profiles') and item['profiles']['role'] == 'student']
         
         return students_data
     except Exception as e:

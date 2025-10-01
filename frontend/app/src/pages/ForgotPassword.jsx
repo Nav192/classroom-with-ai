@@ -17,9 +17,9 @@ export default function ForgotPassword() {
       // This is a placeholder API call.
       // The backend should handle the logic to send a password reset link.
       await api.post('/auth/forgot-password', { email });
-      setMessage('Jika email Anda terdaftar, Anda akan menerima email berisi tautan untuk mereset password Anda.');
+      setMessage('If your email is registered, you will receive a password reset link.');
     } catch (err) {
-      setError('Gagal mengirim permintaan reset password. Silakan coba lagi.');
+      setError('Failed to send password reset request. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -28,11 +28,11 @@ export default function ForgotPassword() {
   return (
     <div className="flex items-center justify-center min-h-screen bg-gray-100">
       <div className="w-full max-w-md p-8 space-y-6 bg-white rounded-lg shadow-md">
-        <h2 className="text-2xl font-bold text-center text-gray-900">Lupa Password</h2>
+        <h2 className="text-2xl font-bold text-center text-gray-900">Forgot Password</h2>
         <form className="space-y-6" onSubmit={handleSubmit}>
           <div>
             <label htmlFor="email" className="block text-sm font-medium text-gray-700">
-              Alamat Email
+              Email Address
             </label>
             <div className="mt-1">
               <input
@@ -54,7 +54,7 @@ export default function ForgotPassword() {
               disabled={loading}
               className="relative flex justify-center w-full px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md group hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
             >
-              {loading ? 'Mengirim...' : 'Kirim Tautan Reset Password'}
+              {loading ? 'Sending...' : 'Send Reset Link'}
             </button>
           </div>
         </form>
@@ -62,7 +62,7 @@ export default function ForgotPassword() {
         {error && <p className="text-sm text-red-600">{error}</p>}
         <div className="text-sm text-center">
           <Link to="/login" className="font-medium text-blue-600 hover:text-blue-500">
-            Kembali ke Login
+            Back to Login
           </Link>
         </div>
       </div>

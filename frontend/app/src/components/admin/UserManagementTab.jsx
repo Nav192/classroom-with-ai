@@ -67,13 +67,12 @@ export default function UserManagementTab({ setStats }) {
         await api.put(`/admin/users/${editingUser.id}`, userData);
       } else {
         await api.post("/admin/users", userData);
+        alert("User created successfully.");
       }
       fetchUsers();
       setIsModalOpen(false);
     } catch (err) {
-      const errorMsg =
-        err.response?.data?.detail ||
-        (editingUser ? "Failed to update user." : "Failed to create user.");
+      const errorMsg = err.response?.data?.detail || (editingUser ? "Failed to update user." : "Failed to create user.");
       alert(errorMsg);
     }
   };
