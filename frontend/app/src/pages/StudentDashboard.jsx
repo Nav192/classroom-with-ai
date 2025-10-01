@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { Users } from "lucide-react";
 import api from "../services/api";
 import DashboardHeader from "../components/student/DashboardHeader";
@@ -8,6 +8,7 @@ import ClassGridDisplay from "../components/student/ClassGridDisplay";
 
 export default function StudentDashboard() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [user, setUser] = useState(null);
   const [username, setUsername] = useState("");
   const [myClasses, setMyClasses] = useState([]);
@@ -15,6 +16,7 @@ export default function StudentDashboard() {
   const [classError, setClassError] = useState("");
   const [selectedClassDetails, setSelectedClassDetails] = useState(null);
   const [activeGridTab, setActiveGridTab] = useState("active"); // State for the grid tabs
+  const [initialClassTab, setInitialClassTab] = useState(null);
 
   useEffect(() => {
     const storedUserId = localStorage.getItem("user_id");
@@ -34,6 +36,31 @@ export default function StudentDashboard() {
       fetchMyClasses();
     }
   }, [user]); // Fetch classes once when user is loaded
+
+  useEffect(() => {
+    if (location.state && location.state.classId) {
+      const { classId, activeTab } = location.state;
+      const foundClass = myClasses.find(c => c.id === classId);
+
+      if (foundClass) {
+        setSelectedClassDetails(foundClass);
+        if (activeTab) {
+          setInitialClassTab(activeTab);
+        }
+        navigate(location.pathname, { replace: true, state: {} });
+      } else if (!loadingClasses) {
+        api.get(`/classes/${classId}`)
+          .then(res => {
+            setSelectedClassDetails(res.data);
+            if (activeTab) {
+              setInitialClassTab(activeTab);
+            }
+            navigate(location.pathname, { replace: true, state: {} });
+          })
+          .catch(err => console.error("Failed to fetch class details from state", err));
+      }
+    }
+  }, [location.state, myClasses, loadingClasses, navigate]);
 
   const fetchMyClasses = async () => {
     setLoadingClasses(true);
@@ -70,6 +97,7 @@ export default function StudentDashboard() {
         <ClassTabs
           selectedClass={selectedClassDetails}
           onBackToClassSelection={() => setSelectedClassDetails(null)}
+          initialActiveTab={initialClassTab}
         />
       ) : myClasses.length === 0 ? (
         <div className="text-center py-20 bg-white rounded-lg shadow-md border border-gray-200">

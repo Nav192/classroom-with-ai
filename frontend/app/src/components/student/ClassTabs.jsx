@@ -7,8 +7,8 @@ import StudentClassResults from "../../pages/StudentClassResults.jsx";
 import ChatTab from "./ChatTab";
 
 // Tabs Component
-export default function ClassTabs({ selectedClass, onBackToClassSelection }) {
-  const [activeTab, setActiveTab] = useState("overview");
+export default function ClassTabs({ selectedClass, onBackToClassSelection, initialActiveTab }) {
+  const [activeTab, setActiveTab] = useState(initialActiveTab || "overview");
 
   const tabs = [
     { id: "overview", label: "Overview" },

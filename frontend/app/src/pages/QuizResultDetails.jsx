@@ -1,12 +1,13 @@
 
 import React, { useState, useEffect } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import api from '../services/api';
 import { Card, CardContent, Typography, CircularProgress, Alert, Box, Chip, Button } from '@mui/material';
 import { ChevronLeft } from 'lucide-react';
 
 const QuizResultDetails = () => {
     const { resultId } = useParams();
+    const navigate = useNavigate();
     const [resultDetails, setResultDetails] = useState(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
@@ -45,6 +46,7 @@ const QuizResultDetails = () => {
 
     const userRole = localStorage.getItem("role");
     const isTeacherOrAdmin = userRole === 'teacher' || userRole === 'admin';
+    const isStudent = userRole === 'student';
 
     const canViewDetails = isTeacherOrAdmin || (available_until && new Date() > new Date(available_until));
     const attemptsRemaining = max_attempts - attempts_taken;
@@ -63,6 +65,15 @@ const QuizResultDetails = () => {
                         to={`/teacher/class/${class_id}/quiz/${quiz_id}/submissions`}
                     >
                         Back to Submissions
+                    </Button>
+                )}
+                {isStudent && (
+                    <Button
+                        variant="outlined"
+                        startIcon={<ChevronLeft />}
+                        onClick={() => navigate('/student/dashboard', { state: { classId: class_id, activeTab: 'results' } })}
+                    >
+                        Back to Results
                     </Button>
                 )}
             </Box>
