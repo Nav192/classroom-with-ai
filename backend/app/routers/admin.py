@@ -147,13 +147,12 @@ def update_user(user_id: UUID, user_data: UserUpdate, sb: Client = Depends(get_s
              raise HTTPException(status_code=500, detail=e.message)
         raise HTTPException(status_code=500, detail=f"An unexpected error occurred: {str(e)}")
 
-class UserPasswordUpdate(BaseModel):
-    password: str
-
-@router.put("/users/{user_id}/password", status_code=status.HTTP_204_NO_CONTENT, summary="Update a user's password")
-def update_user_password(user_id: UUID, user_data: UserPasswordUpdate, sb: Client = Depends(get_supabase_admin)):
+@router.post("/users/{user_id}/reset-password", status_code=status.HTTP_204_NO_CONTENT, summary="Reset a user's password to the default")
+def reset_user_password(user_id: UUID, sb: Client = Depends(get_supabase_admin)):
+    """Resets a user's password to a default value '1234567'."""
     try:
-        sb.auth.admin.update_user_by_id(str(user_id), {"password": user_data.password})
+        # Reset password to "1234567"
+        sb.auth.admin.update_user_by_id(str(user_id), {"password": "1234567"})
     except AuthApiError as e:
         raise HTTPException(status_code=e.status, detail=e.message)
     except Exception as e:
