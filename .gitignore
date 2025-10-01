@@ -36,3 +36,8 @@ yarn-error.log*
 
 # Coverage / build artifacts
 coverage/
+
+# Custom ignore files
+'role'
+'username'
+langkah-langkah mengubah sidebar.md

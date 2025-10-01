@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import api from '../services/api';
 import { 
     Box, 
@@ -16,9 +16,11 @@ import {
     Paper, 
     Button 
 } from '@mui/material';
+import { ChevronLeft } from 'lucide-react';
 
 const QuizSubmissions = () => {
     const { classId, quizId } = useParams();
+    const navigate = useNavigate();
     const [submissions, setSubmissions] = useState([]);
     const [quiz, setQuiz] = useState(null);
     const [loading, setLoading] = useState(true);
@@ -61,7 +63,16 @@ const QuizSubmissions = () => {
 
     return (
         <Box sx={{ p: 3 }}>
-            <Typography variant="h4" gutterBottom>Submissions for: {quiz ? quiz.topic : 'Quiz'}</Typography>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                <Typography variant="h4" gutterBottom>Submissions for: {quiz ? quiz.topic : 'Quiz'}</Typography>
+                <Button
+                    variant="outlined"
+                    startIcon={<ChevronLeft />}
+                    onClick={() => navigate('/teacher/dashboard', { state: { classId: classId, activeTab: 'quizzes' } })}
+                >
+                    Back to Quizzes
+                </Button>
+            </Box>
             <TableContainer component={Paper}>
                 <Table aria-label="quiz submissions table">
                     <TableHead>

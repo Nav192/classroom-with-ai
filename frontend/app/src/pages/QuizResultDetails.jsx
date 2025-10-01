@@ -1,8 +1,9 @@
 
 import React, { useState, useEffect } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, Link } from 'react-router-dom';
 import api from '../services/api';
-import { Card, CardContent, Typography, CircularProgress, Alert, Box, Chip } from '@mui/material';
+import { Card, CardContent, Typography, CircularProgress, Alert, Box, Chip, Button } from '@mui/material';
+import { ChevronLeft } from 'lucide-react';
 
 const QuizResultDetails = () => {
     const { resultId } = useParams();
@@ -40,7 +41,7 @@ const QuizResultDetails = () => {
         return <Alert severity="info">No quiz result details found.</Alert>;
     }
 
-    const { quiz_title, score, total_questions, submitted_at, details, max_attempts, attempts_taken, available_until } = resultDetails;
+    const { quiz_title, score, total_questions, submitted_at, details, max_attempts, attempts_taken, available_until, class_id, quiz_id } = resultDetails;
 
     const userRole = localStorage.getItem("role");
     const isTeacherOrAdmin = userRole === 'teacher' || userRole === 'admin';
@@ -50,9 +51,21 @@ const QuizResultDetails = () => {
 
     return (
         <Box sx={{ p: 3 }}>
-            <Typography variant="h4" gutterBottom component="div">
-                {quiz_title} - Result Details
-            </Typography>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                <Typography variant="h4" gutterBottom component="div">
+                    {quiz_title} - Result Details
+                </Typography>
+                {isTeacherOrAdmin && (
+                    <Button
+                        variant="outlined"
+                        startIcon={<ChevronLeft />}
+                        component={Link}
+                        to={`/teacher/class/${class_id}/quiz/${quiz_id}/submissions`}
+                    >
+                        Back to Submissions
+                    </Button>
+                )}
+            </Box>
             <Box sx={{ mb: 3, display: 'flex', gap: 2, alignItems: 'center' }}>
                 <Chip label={`Score: ${score} / ${total_questions}`} color="primary" />
                 <Chip label={`Submitted: ${new Date(submitted_at).toLocaleString()}`} variant="outlined" />

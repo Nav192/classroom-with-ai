@@ -95,6 +95,7 @@ class TeacherResultAnswerDetailOut(ResultAnswerDetailOut):
 
 class QuizResultDetailOut(BaseModel):
     quiz_id: UUID
+    class_id: UUID
     quiz_title: str
     result_id: UUID
     user_id: UUID
@@ -108,6 +109,7 @@ class QuizResultDetailOut(BaseModel):
 
 class TeacherQuizResultDetailOut(BaseModel):
     quiz_id: UUID
+    class_id: UUID
     quiz_title: str
     result_id: UUID
     user_id: UUID
@@ -246,6 +248,7 @@ def get_quiz_result_details(
         
         return TeacherQuizResultDetailOut(
             quiz_id=quiz_data['id'],
+            class_id=quiz_data['class_id'],
             quiz_title=quiz_data['topic'],
             result_id=result_id,
             user_id=result_data['user_id'],
@@ -278,6 +281,7 @@ def get_quiz_result_details(
         
         return QuizResultDetailOut(
             quiz_id=quiz_data['id'],
+            class_id=quiz_data['class_id'],
             quiz_title=quiz_data['topic'],
             result_id=result_id,
             user_id=result_data['user_id'],
