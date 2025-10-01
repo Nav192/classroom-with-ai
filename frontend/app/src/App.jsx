@@ -25,6 +25,7 @@ import StudentProgress from "./pages/StudentProgress.jsx";
 import ClassAverageScores from "./pages/ClassAverageScores.jsx";
 import QuizSubmissions from "./pages/QuizSubmissions.jsx";
 import QuizResultDetails from "./pages/QuizResultDetails.jsx";
+import ForgotPassword from "./pages/ForgotPassword.jsx";
 import AdminLogin from "./pages/AdminLogin.jsx";
 
 const INACTIVITY_TIMEOUT = 15 * 60 * 1000; // 15 minutes in milliseconds
@@ -81,6 +82,7 @@ function AppContent() {
       <Route path="/login" element={<Login />} />
       <Route path="/signup" element={<Signup />} />
       <Route path="/admin-login" element={<AdminLogin />} />
+      <Route path="/forgot-password" element={<ForgotPassword />} />
 
       <Route element={<DefaultLayout />}>
         <Route

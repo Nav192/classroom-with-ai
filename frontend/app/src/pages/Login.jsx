@@ -37,7 +37,15 @@ export default function Login() {
 
       navigate(`/${data.role}/dashboard`);
     } catch (err) {
-      setError(err.message || "Login failed. Please try again.");
+      console.error("Login error:", err);
+      const errorMessage = err.message || "Login failed. Please try again.";
+      if (errorMessage.includes("Invalid login credentials")) {
+        setError("Invalid email or password. Please try again.");
+      } else if (errorMessage.includes("Email not confirmed")) {
+        setError("Email not confirmed. Please check your email for a confirmation link or register again.");
+      } else {
+        setError(errorMessage);
+      }
     } finally {
       setLoading(false);
     }
@@ -126,12 +134,16 @@ export default function Login() {
               />
               Remember me
             </label>
-            <Link
-              to="/forgot-password"
+            <a
+              href="/forgot-password"
+              onClick={(e) => {
+                e.preventDefault();
+                navigate("/forgot-password");
+              }}
               className="text-pink-300 hover:text-pink-200 transition"
             >
               Forgot password?
-            </Link>
+            </a>
           </div>
 
           {/* Button */}

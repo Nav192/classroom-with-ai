@@ -11,12 +11,14 @@ export default function Signup() {
   const [role, setRole] = useState("student");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [success, setSuccess] = useState(null);
   const navigate = useNavigate();
 
   async function onSubmit(e) {
     e.preventDefault();
     setLoading(true);
     setError(null);
+    setSuccess(null);
     try {
       const res = await fetch(`${API}/auth/register`, {
         method: "POST",
@@ -24,24 +26,29 @@ export default function Signup() {
         body: JSON.stringify({ email, password, role, username }),
       });
       if (!res.ok) throw new Error(await res.text());
-      
-      // Automatically log in after successful signup
-      const loginRes = await fetch(`${API}/auth/login`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
-      });
-      if (!loginRes.ok) throw new Error(await loginRes.text());
-      const loginData = await loginRes.json();
-      localStorage.setItem("access_token", loginData.access_token);
-      localStorage.setItem("user_id", loginData.user_id);
-      localStorage.setItem("role", role);
-      navigate(`/${role}/dashboard`);
+      setSuccess("Registration almost done, you need to confirm your email.");
     } catch (err) {
       setError(String(err));
     } finally {
       setLoading(false);
     }
+  }
+
+  if (success) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-gray-100">
+        <div className="w-full max-w-md p-8 space-y-6 bg-white rounded-2xl shadow-xl text-center">
+          <h1 className="text-2xl font-bold text-gray-800">Registration Successful!</h1>
+          <p className="text-gray-600">{success}</p>
+          <p className="text-sm text-gray-500">
+            Please check your inbox (and spam folder) for the confirmation link.
+          </p>
+          <Link to="/login" className="inline-block mt-4 px-6 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700">
+            Back to Login
+          </Link>
+        </div>
+      </div>
+    );
   }
 
   return (
