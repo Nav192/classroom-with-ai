@@ -71,6 +71,8 @@ class QuizWithQuestions(QuizOut):
     current_attempt_number: int = 1
     started_at: Optional[datetime] = None
     result_id: Optional[UUID] = None
+    available_from: Optional[datetime] = None
+    available_until: Optional[datetime] = None
 
 class CheckpointIn(BaseModel):
     question_id: UUID

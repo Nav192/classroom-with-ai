@@ -415,8 +415,17 @@ export default function QuizBuilder() {
               )}
 
               <div className="space-y-2">
-                <label className="text-sm font-medium">Correct Answer</label>
-                <input type="text" value={q.answer} onChange={e => handleQuestionChange(qIndex, 'answer', e.target.value)} placeholder="Enter the correct answer" required className="w-full p-2 bg-input border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-primary"/>
+        <label className="block text-gray-700 text-sm font-bold mb-2 mt-4">Correct Answer:</label>
+        <select
+            value={q.answer || ''}
+            onChange={(e) => handleQuestionChange(qIndex, 'answer', e.target.value)}
+            className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+        >
+            <option value="" disabled>Select correct answer</option>
+            {q.options.map((option, optIndex) => (
+                <option key={optIndex} value={option}>{option}</option>
+            ))}
+        </select>
               </div>
             </fieldset>
           ))}

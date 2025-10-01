@@ -253,6 +253,48 @@ export default function QuizTaker() {
     return () => clearInterval(timer);
   }, [timeLeft, endedAt, handleSubmit]);
 
+  // Effect to handle auto-submission based on available_until
+  useEffect(() => {
+    console.log('--- available_until useEffect triggered ---');
+    console.log('quiz:', quiz);
+    console.log('quiz.available_until:', quiz?.available_until);
+    console.log('endedAt:', endedAt);
+    console.log('quizStarted:', quizStarted);
+
+    if (!quiz || !quiz.available_until || endedAt || !quizStarted) {
+      console.log('Conditions not met for auto-submit check. Returning.');
+      return;
+    }
+
+    const availableUntilDate = new Date(quiz.available_until);
+    const now = new Date();
+
+    console.log('Parsed availableUntilDate:', availableUntilDate);
+    console.log('Current time (now):', now);
+    console.log('now >= availableUntilDate:', now >= availableUntilDate);
+
+    if (now >= availableUntilDate) {
+      console.log('Auto-submitting immediately because available_until has passed.');
+      handleSubmit(true);
+      return;
+    }
+
+    const checkInterval = setInterval(() => {
+      const currentTime = new Date();
+      console.log('Interval check: currentTime:', currentTime, 'availableUntilDate:', availableUntilDate, 'currentTime >= availableUntilDate:', currentTime >= availableUntilDate);
+      if (currentTime >= availableUntilDate) {
+        console.log('Auto-submitting from interval because available_until has passed.');
+        clearInterval(checkInterval);
+        handleSubmit(true);
+      }
+    }, 1000); // Check every second
+
+    return () => {
+      console.log('Cleaning up available_until check interval.');
+      clearInterval(checkInterval);
+    };
+  }, [quiz, endedAt, quizStarted, handleSubmit]);
+
   if (loading) return <div className="p-6">Loading quiz...</div>;
   if (error) return <div className="p-6 text-destructive">{error}</div>;
   if (!quiz) return <div className="p-6">Quiz not found.</div>;
