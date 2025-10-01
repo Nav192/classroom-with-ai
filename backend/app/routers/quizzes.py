@@ -57,6 +57,7 @@ class QuizForTeacher(QuizOut):
     available_until: Optional[datetime] = None
     students_taken: int = 0
     students_not_taken: int = 0
+    status: str # Add this line
 
 # New model for updating quiz settings
 class QuizSettingsIn(BaseModel):

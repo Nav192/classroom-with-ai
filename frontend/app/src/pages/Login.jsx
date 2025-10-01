@@ -27,8 +27,10 @@ export default function Login() {
       const data = await res.json();
 
       // Prevent admin users from logging in via the regular login page
-      if (data.role === 'admin') {
-        throw new Error("Administrators must use the dedicated Admin Login page.");
+      if (data.role === "admin") {
+        throw new Error(
+          "Administrators must use the dedicated Admin Login page."
+        );
       }
 
       localStorage.setItem("access_token", data.access_token);
@@ -42,7 +44,9 @@ export default function Login() {
       if (errorMessage.includes("Invalid login credentials")) {
         setError("Invalid email or password. Please try again.");
       } else if (errorMessage.includes("Email not confirmed")) {
-        setError("Email not confirmed. Please check your email for a confirmation link or register again.");
+        setError(
+          "Email not confirmed. Please check your email for a confirmation link or register again."
+        );
       } else {
         setError(errorMessage);
       }
@@ -127,13 +131,6 @@ export default function Login() {
 
           {/* Remember me + Forgot Password */}
           <div className="flex items-center justify-between text-sm text-gray-200 dark:text-gray-300">
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                className="rounded bg-white/20 border-white/30 text-pink-400 focus:ring-pink-400"
-              />
-              Remember me
-            </label>
             <a
               href="/forgot-password"
               onClick={(e) => {

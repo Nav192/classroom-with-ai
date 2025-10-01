@@ -35,6 +35,7 @@ class LoginResponse(BaseModel):
     user_id: str
     role: str
     username: str
+    is_active: bool
 
 
 @router.post("/login", response_model=LoginResponse)
@@ -44,15 +45,19 @@ def login(payload: LoginRequest, sb_admin: Client = Depends(get_supabase_admin))
         if res.user is None or res.session is None or res.session.access_token is None:
             raise HTTPException(status_code=401, detail="Invalid credentials")
 
-        # Get role from our public.profiles table
-        profile = sb_admin.table("profiles").select("role, username").eq("id", res.user.id).single().execute()
+        # Get role and is_active from our public.profiles table
+        profile = sb_admin.table("profiles").select("role, username, is_active").eq("id", res.user.id).single().execute()
         if not profile.data or not profile.data.get("role"):
             raise HTTPException(status_code=404, detail="User profile or role not found.")
 
         user_role = profile.data["role"]
         user_username = profile.data["username"]
+        user_is_active = profile.data.get("is_active", True) # Default to True if not set
 
-        return LoginResponse(access_token=res.session.access_token, user_id=res.user.id, role=user_role, username=user_username)
+        if not user_is_active:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Your account has been disabled. Please contact the administrator.")
+
+        return LoginResponse(access_token=res.session.access_token, user_id=res.user.id, role=user_role, username=user_username, is_active=user_is_active)
     except Exception as exc:
         print(f"Login failed. Exception: {exc}")
         import traceback

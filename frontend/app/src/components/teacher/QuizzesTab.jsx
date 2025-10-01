@@ -160,6 +160,7 @@ function QuizCard({ quiz, classId, fetchQuizzes, setError }) {
         <div>
           <p className="font-semibold text-gray-800">{quiz.topic}</p>
           <p className="text-sm text-gray-500">Type: {quiz.type}</p>
+          <p className="text-sm text-gray-600">Status: {quiz.status ? quiz.status.charAt(0).toUpperCase() + quiz.status.slice(1) : 'N/A'}</p>
           <p className="text-xs text-gray-500 mt-1">
             Created: {new Date(quiz.created_at).toLocaleString()}
           </p>

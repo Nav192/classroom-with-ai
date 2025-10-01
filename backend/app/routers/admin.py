@@ -19,7 +19,11 @@ class UserResponse(BaseModel):
     username: str
     email: EmailStr
     role: str
-    email_confirmed_at: str | None = None # Add this field
+    email_confirmed_at: str | None = None
+    is_active: bool # Add this field
+
+class UserStatusUpdate(BaseModel):
+    is_active: bool
     class Config:
         from_attributes = True
 
@@ -219,14 +223,27 @@ class ClassMemberResponse(BaseModel):
     class Config:
         from_attributes = True
 
+@router.patch("/users/{user_id}/status", response_model=UserResponse, summary="Update a user's active status")
+def update_user_status(user_id: UUID, status_update: UserStatusUpdate, sb: Client = Depends(get_supabase_admin)):
+    try:
+        profile_updates = {"is_active": status_update.is_active}
+        response = sb.table("profiles").update(profile_updates).eq("id", str(user_id)).execute()
+        if not response.data:
+            raise HTTPException(status_code=404, detail="User not found or no changes made.")
+        return response.data[0]
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @router.get("/users", response_model=List[UserResponse], summary="List all users")
 def list_users(sb: Client = Depends(get_supabase_admin)):
     try:
-        response = sb.table("profiles").select("id, email, role, username").execute()
+        response = sb.table("profiles").select("id, email, role, username, is_active").execute()
         users_data = response.data or []
         for user in users_data:
             if user.get("username") is None:
                 user["username"] = ""
+            if user.get("is_active") is None: # Ensure is_active is always present
+                user["is_active"] = True # Default to true if not set
         return users_data
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

@@ -21,15 +21,31 @@ export default function Login() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),
       });
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) {
+        const errorData = await res.json();
+        let humanReadableMessage = errorData.detail || "Login failed.";
+
+        // Clean the message if it contains the '403: ' prefix
+        if (humanReadableMessage.startsWith("403: ")) {
+          humanReadableMessage = humanReadableMessage.substring(5); // Remove "403: "
+        }
+
+        // Check for the specific deactivated message and translate if needed
+        if (humanReadableMessage === "Akun Anda telah dinonaktifkan. Silakan hubungi administrator.") {
+          humanReadableMessage = "Your account has been deactivated. Please contact an administrator.";
+        }
+        throw new Error(humanReadableMessage);
+      }
       const data = await res.json();
       localStorage.setItem("access_token", data.access_token);
       localStorage.setItem("user_id", data.user_id);
       localStorage.setItem("user_role", data.role);
+      localStorage.setItem("is_active", data.is_active); // Store is_active status
 
       navigate(`/${data.role}/dashboard`);
     } catch (err) {
-      setError(String(err));
+
+      setError(err.message || "An unknown error occurred.");
     } finally {
       setLoading(false);
     }
