@@ -17,6 +17,7 @@ class QuestionIn(BaseModel):
     type: str
     options: Optional[List[str]] = None
     answer: Optional[str] = None
+    max_score: Optional[int] = None # For essay questions
 
 class QuizIn(BaseModel):
     topic: str
@@ -113,6 +114,9 @@ def create_quiz(
     current_teacher: dict = Depends(get_current_teacher_user),
 ):
     teacher_id = current_teacher.get("id")
+    print(f"DEBUG: create_quiz called by teacher {teacher_id}")
+    print(f"DEBUG: QuizIn payload: {payload.model_dump_json()}")
+
     if any(q.type != payload.type for q in payload.questions):
         raise HTTPException(status_code=400, detail="All question types must match the quiz type.")
 
@@ -127,15 +131,23 @@ def create_quiz(
             "available_from": payload.available_from.isoformat() if payload.available_from else None,
             "available_until": payload.available_until.isoformat() if payload.available_until else None,
             "status": payload.status,
+            "created_by": teacher_id, # Add this line
         }).execute()
         
         if not quiz_res.data:
             raise HTTPException(status_code=500, detail="Failed to create quiz.")
         
         new_quiz = quiz_res.data[0]
-        questions_to_insert = [
-            {**q.model_dump(exclude={'id'}), "quiz_id": new_quiz['id']} for q in payload.questions
-        ]
+        questions_to_insert = []
+        for q in payload.questions:
+            q_dict = q.model_dump(exclude={'id'})
+            q_dict["quiz_id"] = new_quiz['id']
+            if q.type == "essay":
+                q_dict["answer"] = None  # Essay questions don't have a predefined correct answer
+            elif q.type in ["mcq", "true_false"] and q_dict.get("max_score") is None: # NEW LOGIC
+                q_dict["max_score"] = 100 # Default max_score for MCQ/TrueFalse
+            print(f"DEBUG: Question to insert: {q_dict}")
+            questions_to_insert.append(q_dict)
         
         questions_res = sb.table("questions").insert(questions_to_insert).execute()
 
@@ -192,6 +204,10 @@ def update_quiz(
         for q_payload in payload.questions:
             question_dict = q_payload.model_dump()
             question_dict['quiz_id'] = str(quiz_id)
+            if q_payload.type == "essay":
+                question_dict["answer"] = None  # Essay questions don't have a predefined correct answer
+            elif q_payload.type in ["mcq", "true_false"] and question_dict.get("max_score") is None: # NEW LOGIC
+                question_dict["max_score"] = 100 # Default max_score for MCQ/TrueFalse
 
             if q_payload.id:
                 # This is an existing question to be updated
@@ -585,7 +601,7 @@ async def submit_quiz(
     attempt_number = result_data["attempt_number"]
 
     # 2. Fetch quiz questions and correct answers
-    questions_res = sb.table("questions").select("id, type, answer")\
+    questions_res = sb.table("questions").select("id, type, answer, max_score")\
         .eq("quiz_id", str(quiz_id))\
         .execute()
     
@@ -605,8 +621,10 @@ async def submit_quiz(
     tf_correct = 0
     mcq_total = 0
     tf_total = 0
+    essay_questions_present = False
 
     answers_to_insert = []
+    essay_submissions_to_insert = []
 
     for q_id_str, user_answer in payload.user_answers.items():
         q_id = UUID(q_id_str)
@@ -626,6 +644,17 @@ async def submit_quiz(
             if str(user_answer).lower().strip() == str(question.get("answer")).lower().strip():
                 tf_correct += 1
                 is_correct = True
+        elif question["type"] == "essay":
+            essay_questions_present = True
+            essay_submissions_to_insert.append({
+                "quiz_result_id": str(payload.result_id),
+                "quiz_question_id": str(q_id),
+                "student_answer": user_answer,
+                "created_at": datetime.now(timezone.utc).isoformat(),
+                "updated_at": datetime.now(timezone.utc).isoformat()
+            })
+            # Essay questions do not contribute to the immediate score calculation
+            continue
 
         answers_to_insert.append({
             "result_id": str(payload.result_id),
@@ -636,21 +665,25 @@ async def submit_quiz(
             "attempt_number": attempt_number
         })
 
-    # Calculate score based on correct answers
-    total_questions_answered = mcq_total + tf_total
+    # Calculate score based on correct answers for auto-graded questions
+    total_auto_graded_questions = mcq_total + tf_total
     score = 0
-    if total_questions_answered > 0:
-        correct_answers = mcq_correct + tf_correct
-        score = round((correct_answers / total_questions_answered) * 100)
+    if total_auto_graded_questions > 0:
+        correct_auto_graded_answers = mcq_correct + tf_correct
+        score = round((correct_auto_graded_answers / total_auto_graded_questions) * 100)
 
     if answers_to_insert:
         sb.table("quiz_answers").insert(answers_to_insert).execute()
+
+    if essay_submissions_to_insert:
+        sb.table("essay_submissions").insert(essay_submissions_to_insert).execute()
 
     # 4. Update the results table
     update_data = {
         "score": score,
         "total": 100, # Total is now always 100 as score is a percentage
-        "ended_at": datetime.now(timezone.utc).isoformat()
+        "ended_at": datetime.now(timezone.utc).isoformat(),
+        "status": "pending_review" if essay_questions_present else "completed"
     }
     print(f"DEBUG: Attempting to update result {payload.result_id} with data: {update_data}")
     try:
@@ -666,7 +699,7 @@ async def submit_quiz(
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"An error occurred during quiz result update: {str(e)}")
 
-    return {"message": "Quiz submitted successfully", "score": score, "total": 100}
+    return {"message": "Quiz submitted successfully", "score": score, "total": 100, "status": update_data["status"]}
 
 @router.post("/{quiz_id}/cancel", status_code=status.HTTP_200_OK)
 async def cancel_quiz_attempt(

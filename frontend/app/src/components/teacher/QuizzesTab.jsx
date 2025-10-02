@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom'; // Import useNavigate
 import api from '../../services/api';
 import { Plus, Pencil, Trash2, Copy } from 'lucide-react';
+
 function QuizzesTab({ classId }) {
+  const navigate = useNavigate(); // Initialize useNavigate
   const [quizzes, setQuizzes] = useState([]);
   const [loadingQuizzes, setLoadingQuizzes] = useState(true);
   const [error, setError] = useState("");
@@ -18,6 +20,10 @@ function QuizzesTab({ classId }) {
   };
 
   useEffect(fetchQuizzes, [classId]);
+
+  const handleViewDetailsClick = (quizId) => {
+    navigate(`/teacher/class/${classId}/quiz/${quizId}/submissions`);
+  };
 
   return (
     <div className="bg-white p-6 rounded-lg shadow-md border border-gray-200 space-y-6">
@@ -44,6 +50,7 @@ function QuizzesTab({ classId }) {
               classId={classId}
               fetchQuizzes={fetchQuizzes}
               setError={setError}
+              handleViewDetailsClick={handleViewDetailsClick} // Pass the new handler
             />
           ))}
         </div>
@@ -59,35 +66,8 @@ function QuizzesTab({ classId }) {
   );
 }
 
-function QuizCard({ quiz, classId, fetchQuizzes, setError }) {
-  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+function QuizCard({ quiz, classId, fetchQuizzes, setError, handleViewDetailsClick }) {
   const [isActive, setIsActive] = useState(quiz.is_active);
-
-  const toLocalISOString = (dateString) => {
-    if (!dateString) return "";
-    const date = new Date(dateString);
-    const timezoneOffset = date.getTimezoneOffset() * 60000;
-    const localDate = new Date(date.getTime() - timezoneOffset);
-    return localDate.toISOString().slice(0, 16);
-  };
-
-  const [availableFrom, setAvailableFrom] = useState(
-    toLocalISOString(quiz.available_from)
-  );
-  const [availableFromSec, setAvailableFromSec] = useState(
-    quiz.available_from
-      ? new Date(quiz.available_from).getSeconds().toString().padStart(2, "0")
-      : "00"
-  );
-  const [availableUntil, setAvailableUntil] = useState(
-    toLocalISOString(quiz.available_until)
-  );
-  const [availableUntilSec, setAvailableUntilSec] = useState(
-    quiz.available_until
-      ? new Date(quiz.available_until).getSeconds().toString().padStart(2, "0")
-      : "00"
-  );
-  const [isSaving, setIsSaving] = useState(false);
 
   const handleToggleActive = async (newIsActive) => {
     setIsActive(newIsActive);
@@ -98,32 +78,6 @@ function QuizCard({ quiz, classId, fetchQuizzes, setError }) {
     } catch (err) {
       setError(err.response?.data?.detail || "Failed to update quiz status.");
       setIsActive(!newIsActive);
-    }
-  };
-
-  const handleSaveSettings = async () => {
-    setIsSaving(true);
-    setError("");
-    try {
-      const fromDate = availableFrom ? new Date(availableFrom) : null;
-      if (fromDate) {
-        fromDate.setSeconds(parseInt(availableFromSec, 10) || 0);
-      }
-
-      const untilDate = availableUntil ? new Date(availableUntil) : null;
-      if (untilDate) {
-        untilDate.setSeconds(parseInt(availableUntilSec, 10) || 0);
-      }
-
-      await api.patch(`/quizzes/${quiz.id}/settings`, {
-        available_from: fromDate ? fromDate.toISOString() : null,
-        available_until: untilDate ? untilDate.toISOString() : null,
-      });
-      setIsSettingsOpen(false);
-    } catch (err) {
-      setError(err.response?.data?.detail || "Failed to save schedule.");
-    } finally {
-      setIsSaving(false);
     }
   };
 
@@ -155,12 +109,24 @@ function QuizCard({ quiz, classId, fetchQuizzes, setError }) {
 
   return (
     <div className="p-4 rounded-lg bg-gray-50 border border-gray-200 transition-shadow hover:shadow-sm">
-      {/* Main Info Bar */}
       <div className="flex flex-wrap justify-between items-center gap-4">
         <div>
           <p className="font-semibold text-gray-800">{quiz.topic}</p>
           <p className="text-sm text-gray-500">Type: {quiz.type}</p>
-          <p className="text-sm text-gray-600">Status: {quiz.status ? quiz.status.charAt(0).toUpperCase() + quiz.status.slice(1) : 'N/A'}</p>
+          <p className="text-sm text-gray-600">
+            Status:{" "}
+            <span
+              className={`font-medium ${
+                quiz.status === "pending_review"
+                  ? "text-yellow-600"
+                  : "text-gray-700"
+              }`}
+            >
+              {quiz.status
+                ? quiz.status.charAt(0).toUpperCase() + quiz.status.slice(1)
+                : "N/A"}
+            </span>
+          </p>
           <p className="text-xs text-gray-500 mt-1">
             Created: {new Date(quiz.created_at).toLocaleString()}
           </p>
@@ -184,12 +150,12 @@ function QuizCard({ quiz, classId, fetchQuizzes, setError }) {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <Link
-            to={`/teacher/class/${classId}/quiz/${quiz.id}/submissions`}
+          <button
+            onClick={() => handleViewDetailsClick(quiz.id)}
             className="bg-blue-100 text-blue-700 px-3 py-1 rounded-md hover:bg-blue-200 text-sm font-medium"
           >
             View Details
-          </Link>
+          </button>
           <Link
             to={`/teacher/quiz/edit/${quiz.id}`}
             className="p-2 text-gray-500 hover:text-blue-600 transition-colors"

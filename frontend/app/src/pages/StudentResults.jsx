@@ -72,7 +72,13 @@ const StudentResults = () => {
                                     <TableCell component="th" scope="row">
                                         {result.quiz_title || `Quiz ID: ${result.quiz_id}`}
                                     </TableCell>
-                                    <TableCell align="right">{result.score} / {result.total}</TableCell>
+                                    <TableCell align="right">
+                                        {result.status === 'pending_review' ? (
+                                            <span className="text-yellow-600">Pending Review</span>
+                                        ) : (
+                                            `${result.score} / ${result.total}`
+                                        )}
+                                    </TableCell>
                                     <TableCell align="right">{result.attempt_number}</TableCell>
                                     <TableCell align="center">{new Date(result.created_at).toLocaleString()}</TableCell>
                                     <TableCell align="center">

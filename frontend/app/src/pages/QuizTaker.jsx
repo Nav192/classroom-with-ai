@@ -89,7 +89,7 @@ export default function QuizTaker() {
         quizDetailsResponse.data.duration_minutes * 60;
       setTimeLeft(totalDurationSeconds);
     } catch (err) {
-      setError(err.response?.data?.detail || "Failed to start quiz.");
+      setError(typeof err.response?.data?.detail === 'object' ? JSON.stringify(err.response.data.detail) : err.response?.data?.detail || "Failed to start quiz.");
       console.error("Error starting quiz:", err);
     } finally {
       setLoading(false);
@@ -136,7 +136,7 @@ export default function QuizTaker() {
           setAttemptNumber(quizData.current_attempt_number);
         }
       } catch (err) {
-        setError(err.response?.data?.detail || "Failed to load quiz.");
+        setError(typeof err.response?.data?.detail === 'object' ? JSON.stringify(err.response.data.detail) : err.response?.data?.detail || "Failed to load quiz.");
         console.error("Error in fetchQuiz:", err);
       } finally {
         setLoading(false);
@@ -201,13 +201,13 @@ export default function QuizTaker() {
       const now = new Date();
       setEndedAt(now);
 
-      const payload = {
-        result_id: resultId,
-        user_answers: answers,
-      };
-
       try {
-        const response = await api.post(`/quizzes/${quizId}/submit`, payload);
+        const payload = {
+          result_id: resultId,
+          user_answers: answers,
+        };
+
+        const response = await api.post(`/results/submit`, payload);
         if (cheatingEventsCount > 0) {
           sendCheatingEvent(
             "quiz_submission",
@@ -215,12 +215,20 @@ export default function QuizTaker() {
             resultId
           );
         }
-        setSubmissionMessage(
-          `Quiz submitted successfully! Your score: ${response.data.score}.`
-        );
+        
+        const quizStatus = response.data.status;
+        if (quizStatus === "pending_review") {
+          setSubmissionMessage(
+            "Quiz submitted successfully! It contains essay questions and is awaiting teacher review. Your final score will be available after grading."
+          );
+        } else {
+          setSubmissionMessage(
+            `Quiz submitted successfully! Your score: ${response.data.score}.`
+          );
+        }
       } catch (err) {
         setSubmissionMessage(
-          err.response?.data?.detail || "Failed to submit quiz."
+          typeof err.response?.data?.detail === 'object' ? JSON.stringify(err.response.data.detail) : err.response?.data?.detail || "Failed to submit quiz."
         );
       }
     },

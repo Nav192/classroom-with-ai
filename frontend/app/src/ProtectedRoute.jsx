@@ -33,12 +33,12 @@ export default function ProtectedRoute({ allowedRoles, Component }) {
 
   if (!isAuthenticated) {
     console.log("Redirect reason: Not authenticated. Navigating to /login");
-    return <Navigate to="/login" replace />;
+    return <div>DEBUG: Not authenticated. Should redirect to /login</div>; // Temporarily disable redirect
   }
 
   if (rolesToCheck.length > 0 && !rolesToCheck.includes(userRole)) {
     console.log("Redirect reason: Role not allowed for this path. Navigating to /");
-    return <Navigate to="/" replace />;
+    return <div>DEBUG: Role not allowed. Should redirect to /</div>; // Temporarily disable redirect
   }
 
   console.log("Access granted. Rendering Component.");

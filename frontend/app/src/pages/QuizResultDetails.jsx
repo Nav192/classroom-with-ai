@@ -120,17 +120,34 @@ const QuizResultDetails = () => {
                                 </Typography>
                             </Box>
 
-                            {!item.is_correct && (
-                                                            <Box 
-                                                                sx={{ 
-                                                                    p: 2, 
-                                                                    borderRadius: 1,
-                                                                    backgroundColor: 'success.light'
-                                                                }}
-                                                            >                                    <Typography variant="body1">
-                                        <strong>Correct Answer:</strong> {item.correct_answer}
-                                    </Typography>
-                                </Box>
+                            {item.question.question_type === 'essay' ? (
+                                item.teacher_feedback && ( // Only show if feedback exists
+                                    <Box 
+                                        sx={{ 
+                                            p: 2, 
+                                            borderRadius: 1,
+                                            backgroundColor: 'info.light' // Use a different color for feedback
+                                        }}
+                                    >
+                                        <Typography variant="body1">
+                                            <strong>Teacher Feedback:</strong> {item.teacher_feedback}
+                                        </Typography>
+                                    </Box>
+                                )
+                            ) : (
+                                !item.is_correct && ( // Original logic for non-essay questions
+                                    <Box 
+                                        sx={{ 
+                                            p: 2, 
+                                            borderRadius: 1,
+                                            backgroundColor: 'success.light'
+                                        }}
+                                    >
+                                        <Typography variant="body1">
+                                            <strong>Correct Answer:</strong> {item.correct_answer}
+                                        </Typography>
+                                    </Box>
+                                )
                             )}
                         </CardContent>
                     </Card>

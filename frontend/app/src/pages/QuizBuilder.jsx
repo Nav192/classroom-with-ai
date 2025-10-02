@@ -207,8 +207,9 @@ export default function QuizBuilder() {
         id: q.id || undefined, // Include ID for existing questions
         text: q.text,
         type: quizType,
-        options: q.options,
-        answer: q.answer
+        options: quizType === 'mcq' ? q.options : undefined,
+        answer: quizType === 'essay' ? null : q.answer, // Set answer to null for essay types
+        max_score: quizType === 'essay' ? (q.max_score || null) : null // Include max_score for essay types
       })),
       visible_to: visibleTo,
       available_from: fromDate ? fromDate.toISOString() : null,
@@ -414,19 +415,39 @@ export default function QuizBuilder() {
                 </div>
               )}
 
-              <div className="space-y-2">
-        <label className="block text-gray-700 text-sm font-bold mb-2 mt-4">Correct Answer:</label>
-        <select
-            value={q.answer || ''}
-            onChange={(e) => handleQuestionChange(qIndex, 'answer', e.target.value)}
-            className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
-        >
-            <option value="" disabled>Select correct answer</option>
-            {q.options.map((option, optIndex) => (
-                <option key={optIndex} value={option}>{option}</option>
-            ))}
-        </select>
-              </div>
+              {quizType === 'essay' && (
+                <div className="space-y-2">
+                  <label htmlFor={`max-score-${qIndex}`} className="block text-sm font-medium text-gray-700">Max Score:</label>
+                  <input
+                    type="number"
+                    id={`max-score-${qIndex}`}
+                    value={q.max_score || ''}
+                    onChange={e => {
+                      console.log(`Input for qIndex ${qIndex}, value: ${e.target.value}`);
+                      handleQuestionChange(qIndex, 'max_score', parseInt(e.target.value, 10) || null);
+                    }}
+                    min="1"
+                    className="w-full p-2 bg-input border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+                    required
+                  />
+                </div>
+              )}
+
+              {(quizType === 'mcq' || quizType === 'true_false') && (
+                <div className="space-y-2">
+                  <label className="block text-gray-700 text-sm font-bold mb-2 mt-4">Correct Answer:</label>
+                  <select
+                      value={q.answer || ''}
+                      onChange={(e) => handleQuestionChange(qIndex, 'answer', e.target.value)}
+                      className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+                  >
+                      <option value="" disabled>Select correct answer</option>
+                      {q.options.map((option, optIndex) => (
+                          <option key={optIndex} value={option}>{option}</option>
+                      ))}
+                  </select>
+                </div>
+              )}
             </fieldset>
           ))}
           

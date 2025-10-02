@@ -23,11 +23,12 @@ import Progress from "./pages/Progress.jsx";
 import Chat from "./pages/Chat.jsx";
 import StudentProgress from "./pages/StudentProgress.jsx";
 import ClassAverageScores from "./pages/ClassAverageScores.jsx";
-import QuizSubmissions from "./pages/QuizSubmissions.jsx";
 import QuizResultDetails from "./pages/QuizResultDetails.jsx";
 import ResetPassword from "./pages/ResetPassword.jsx";
 import ForgotPassword from "./pages/ForgotPassword.jsx";
 import AdminLogin from "./pages/AdminLogin.jsx";
+import EssayGradingPage from "./pages/EssayGradingPage.jsx";
+import QuizSubmissionsPage from "./pages/QuizSubmissionsPage.jsx"; // Import new component
 
 const INACTIVITY_TIMEOUT = 15 * 60 * 1000; // 15 minutes in milliseconds
 
@@ -159,12 +160,22 @@ function AppContent() {
             />
           }
         />
+        {/* New route for Quiz Submissions Page */}
         <Route
           path="/teacher/class/:classId/quiz/:quizId/submissions"
           element={
             <ProtectedRoute
               allowedRoles={["teacher"]}
-              Component={QuizSubmissions}
+              Component={QuizSubmissionsPage}
+            />
+          }
+        />
+        <Route
+          path="/teacher/grade-essay/:resultId"
+          element={
+            <ProtectedRoute
+              allowedRoles={["teacher"]}
+              Component={EssayGradingPage}
             />
           }
         />
