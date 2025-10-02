@@ -25,6 +25,26 @@ export default function QuizSubmissionsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [quizTitle, setQuizTitle] = useState("Loading Quiz...");
+  const [firstUngradedSubmissionId, setFirstUngradedSubmissionId] = useState(null);
+
+  useEffect(() => {
+    if (submissions.length > 0) {
+        let found = false;
+        for (const student of submissions) {
+            for (const sub of student.submissions) {
+                if (sub.status === "pending_review") {
+                    setFirstUngradedSubmissionId(sub.id);
+                    found = true;
+                    break;
+                }
+            }
+            if (found) break;
+        }
+        if (!found) {
+            setFirstUngradedSubmissionId(null); // All graded
+        }
+    }
+}, [submissions]);
 
   useEffect(() => {
     const fetchSubmissionsAndStudents = async () => {
@@ -168,7 +188,7 @@ export default function QuizSubmissionsPage() {
                                 size="small"
                                 component={Link}
                                 to={`/teacher/grade-essay/${submission.id}`}
-                                disabled={!submission.isLatestAttempt}
+                                disabled={submission.status !== "pending_review" || submission.id !== firstUngradedSubmissionId || !submission.isLatestAttempt}
                               >
                                 Grade Essays
                               </Button>

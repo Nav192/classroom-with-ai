@@ -607,9 +607,13 @@ def get_results_for_quiz_in_class(
     current_teacher: dict = Depends(get_current_teacher_user),
 ):
     """(For Teachers) Get all results for a specific quiz in a class, including student info."""
-    quiz_check = sb.table("quizzes").select("id, topic").eq("id", str(quiz_id)).eq("class_id", str(class_id)).single().execute()
+    quiz_check = sb.table("quizzes").select("id, topic, available_until").eq("id", str(quiz_id)).eq("class_id", str(class_id)).single().execute()
     if not quiz_check.data:
         raise HTTPException(status_code=404, detail="Quiz not found in this class.")
+    
+    quiz_available_until = None
+    if quiz_check.data.get("available_until"):
+        quiz_available_until = datetime.fromisoformat(quiz_check.data["available_until"])
 
     results_res = sb.table("results").select("*").eq("quiz_id", str(quiz_id)).order("created_at", desc=True).execute()
     results_data = results_res.data or []
@@ -617,8 +621,25 @@ def get_results_for_quiz_in_class(
     if not results_data:
         return []
 
+    now = datetime.now(timezone.utc)
+    updated_results_data = []
+    for result in results_data:
+        current_status = result['status']
+        if current_status == "pending_review" and quiz_available_until and now > quiz_available_until:
+            # Update status to 'completed' if deadline passed and still pending review
+            update_data = {
+                "status": "completed",
+                "ended_at": result['ended_at'] or now.isoformat() # Ensure ended_at is set
+            }
+            try:
+                sb.table("results").update(update_data).eq("id", result['id']).execute()
+                result.update(update_data) # Update local result object for immediate response
+            except Exception as e:
+                print(f"WARNING: Failed to update result {result['id']} status to completed after deadline: {e}")
+        updated_results_data.append(result)
+
     # Get user IDs from results
-    user_ids = [res['user_id'] for res in results_data]
+    user_ids = [res['user_id'] for res in updated_results_data]
     
     # Fetch user details from profiles table which has appropriate RLS
     users_res = sb.table("profiles").select("id, username").in_("id", user_ids).execute()
@@ -626,7 +647,7 @@ def get_results_for_quiz_in_class(
 
     # Combine data
     response_data = []
-    for result in results_data:
+    for result in updated_results_data:
         user_info = users_map.get(str(result['user_id']))
         username = 'Unknown User'
         if user_info:

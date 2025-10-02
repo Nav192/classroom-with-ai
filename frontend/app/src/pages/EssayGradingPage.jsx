@@ -91,8 +91,23 @@ export default function EssayGradingPage() {
                 teacher_feedback: grades[submissionId].teacher_feedback
             });
             setError(null);
-            // Re-fetch data to update status and scores
-            await fetchEssayData();
+
+            // Update local state for the specific submission
+            setEssaySubmissions(prevSubmissions =>
+                prevSubmissions.map(sub =>
+                    sub.id === submissionId
+                        ? { ...sub, teacher_score: score, teacher_feedback: grades[submissionId].teacher_feedback, updated_at: new Date().toISOString() }
+                        : sub
+                )
+            );
+            // Ensure grades state is also updated to reflect the saved status
+            setGrades(prevGrades => ({
+                ...prevGrades,
+                [submissionId]: {
+                    teacher_score: score,
+                    teacher_feedback: grades[submissionId].teacher_feedback
+                }
+            }));
         } catch (err) {
             setError(err.response?.data?.detail || 'Failed to save grade.');
             console.error(err);

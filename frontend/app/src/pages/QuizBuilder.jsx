@@ -423,8 +423,8 @@ export default function QuizBuilder() {
                     id={`max-score-${qIndex}`}
                     value={q.max_score || ''}
                     onChange={e => {
-                      console.log(`Input for qIndex ${qIndex}, value: ${e.target.value}`);
-                      handleQuestionChange(qIndex, 'max_score', parseInt(e.target.value, 10) || null);
+                      const parsedValue = parseInt(e.target.value, 10);
+                      handleQuestionChange(qIndex, 'max_score', isNaN(parsedValue) ? null : parsedValue);
                     }}
                     min="1"
                     className="w-full p-2 bg-input border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-primary"

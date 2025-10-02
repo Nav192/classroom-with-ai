@@ -457,7 +457,7 @@ async def delete_quiz(quiz_id: str, user: dict = Depends(get_current_teacher_use
 @router.post("/{quiz_id}/duplicate", response_model=QuizOut)
 async def duplicate_quiz(quiz_id: str, user: dict = Depends(get_current_teacher_user), sb: Client = Depends(get_supabase)):
     # Fetch the original quiz
-    original_quiz_response = sb.from_('quizzes').select('id, topic, type, duration_minutes, max_attempts, user_id, class_id').eq('id', quiz_id).single().execute()
+    original_quiz_response = sb.from_('quizzes').select('id, topic, type, duration_minutes, max_attempts, user_id, class_id, weight').eq('id', quiz_id).single().execute()
     if not original_quiz_response.data:
         raise HTTPException(status_code=404, detail="Original quiz not found")
     original_quiz = original_quiz_response.data
@@ -469,7 +469,8 @@ async def duplicate_quiz(quiz_id: str, user: dict = Depends(get_current_teacher_
         "duration_minutes": original_quiz['duration_minutes'],
         "max_attempts": original_quiz['max_attempts'],
         "user_id": user['id'],
-        "class_id": original_quiz['class_id']
+        "class_id": original_quiz['class_id'],
+        "weight": original_quiz['weight'] # Include weight
     }
     new_quiz_response = sb.from_('quizzes').insert(new_quiz_data).execute()
     if not new_quiz_response.data:
@@ -477,19 +478,22 @@ async def duplicate_quiz(quiz_id: str, user: dict = Depends(get_current_teacher_
     new_quiz = new_quiz_response.data[0]
     
     # Fetch original questions
-    original_questions_response = sb.from_('questions').select('id, text, type, options, answer').eq('quiz_id', quiz_id).execute()
+    original_questions_response = sb.from_('questions').select('id, text, type, options, answer, max_score').eq('quiz_id', quiz_id).execute()
     original_questions = original_questions_response.data
 
     if original_questions:
         questions_to_insert = []
         for oq in original_questions:
-            questions_to_insert.append({
+            question_data = {
                 "quiz_id": new_quiz['id'],
                 "text": oq['text'],
                 "type": oq['type'],
                 "options": oq['options'],
                 "answer": oq['answer']
-            })
+            }
+            if oq['type'] == "essay":
+                question_data["max_score"] = oq['max_score']
+            questions_to_insert.append(question_data)
         sb.from_('questions').insert(questions_to_insert).execute()
     
     return new_quiz
