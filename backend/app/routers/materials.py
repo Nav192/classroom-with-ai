@@ -42,6 +42,22 @@ def list_materials(
     response = query.order("created_at", desc=True).execute()
     return response.data or []
 
+@router.get("/class/{class_id}", response_model=List[MaterialResponse])
+def list_materials_for_class(
+    class_id: UUID,
+    sb: Client = Depends(get_supabase),
+    current_user: dict = Depends(get_current_user),
+):
+    """Lists all materials for a specific class. User must be a member of the class."""
+    # First, verify membership
+    member_res = sb.table("class_members").select("id").eq("class_id", str(class_id)).eq("user_id", current_user['id']).execute()
+    if not member_res.data:
+        raise HTTPException(status_code=403, detail="You are not a member of this class.")
+
+    query = sb.table("materials").select("id, class_id, topic, filename, file_type, user_id").eq("class_id", str(class_id))
+    response = query.order("created_at", desc=True).execute()
+    return response.data or []
+
 @router.post("/{class_id}", status_code=status.HTTP_201_CREATED, dependencies=[Depends(verify_class_membership)])
 async def upload_material(
     class_id: UUID,

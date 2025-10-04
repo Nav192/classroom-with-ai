@@ -3,6 +3,8 @@ import { useNavigate, useLocation, useParams } from 'react-router-dom';
 import { Plus, Trash2, Sparkles, Info } from 'lucide-react';
 import api from '../services/api';
 
+import { generateQuizFromMaterial } from '../services/api';
+
 export default function QuizBuilder() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -33,6 +35,9 @@ export default function QuizBuilder() {
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
 
+  // AI Generation States
+  const [materials, setMaterials] = useState([]);
+  const [selectedMaterial, setSelectedMaterial] = useState('');
   const [aiNumQuestions, setAiNumQuestions] = useState(5);
   const [aiGenerating, setAiGenerating] = useState(false);
   const [aiError, setAiError] = useState('');
@@ -51,6 +56,10 @@ export default function QuizBuilder() {
         // Fetch total quiz weight
         const weightRes = await api.get(`/classes/${classId}/quiz-weights`);
         setTotalUsedWeight(weightRes.data.total_weight || 0);
+
+        // Fetch materials for the class
+        const materialsRes = await api.get(`/materials/class/${classId}`);
+        setMaterials(materialsRes.data || []);
 
       } catch (err) {
         console.error("Failed to fetch class data", err);
@@ -236,30 +245,36 @@ export default function QuizBuilder() {
   };
 
   const handleGenerateAIQuiz = async () => {
-    if (!topic) {
-      setAiError('Please fill in the Quiz Topic first.');
+    if (!selectedMaterial) {
+      setAiError('Please select a material to generate the quiz from.');
       return;
     }
     setAiGenerating(true);
     setAiError('');
     try {
-      const response = await api.post(`/ai/generate-quiz/${classId}`, {
-        topic,
+      const response = await generateQuizFromMaterial({
+        material_id: selectedMaterial,
         question_type: quizType,
         num_questions: aiNumQuestions,
       });
       
-      const generatedQuestions = response.data.questions.map(q => ({
-        text: q.text,
-        type: q.type,
+      if (!response.questions || response.questions.length === 0) {
+        throw new Error("AI did not return any questions. Please try again or with a different material.");
+      }
+
+      const generatedQuestions = response.questions.map(q => ({
+        text: q.text || '',
+        type: q.type || quizType,
         options: q.options || (q.type === 'true_false' ? ['True', 'False'] : undefined),
-        answer: q.answer || ''
+        answer: q.answer || '',
+        max_score: q.type === 'essay' ? 10 : undefined, // Default max score for new essay questions
       }));
+
       setQuestions(generatedQuestions);
       setMessage('AI-generated quiz questions are ready! Please review and save.');
 
     } catch (err) {
-      setAiError(err.response?.data?.detail || 'Failed to generate quiz with AI.');
+      setAiError(err.message || 'Failed to generate quiz with AI.');
     } finally {
       setAiGenerating(false);
     }
@@ -343,15 +358,43 @@ export default function QuizBuilder() {
 
           <div className="bg-primary/10 p-4 rounded-lg border border-primary/20 space-y-3">
             <h3 className="text-lg font-semibold text-primary flex items-center gap-2"><Sparkles size={20}/> Generate with AI</h3>
-            <p className="text-sm text-primary/80">Use AI to generate quiz questions based on the uploaded materials for the Topic in the selected Class.</p>
-            <div className="flex items-center gap-3">
-              <label htmlFor="aiNumQuestions" className="text-sm font-medium">Number of Questions:</label>
-              <input type="number" id="aiNumQuestions" value={aiNumQuestions} onChange={e => setAiNumQuestions(parseInt(e.target.value, 10))} min="1" max="20" className="w-20 px-3 py-2 bg-input border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-primary"/>
-              <button type="button" onClick={handleGenerateAIQuiz} disabled={aiGenerating || !topic || !classId} className="bg-primary text-primary-foreground px-4 py-2 rounded-md hover:bg-primary/90 disabled:opacity-50 flex items-center gap-2">
-                {aiGenerating ? 'Generating...' : <><Sparkles size={18}/> Generate</>}
+            <p className="text-sm text-primary/80">Use AI to generate quiz questions based on the uploaded materials for this class.</p>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
+              <div className="space-y-2">
+                <label htmlFor="materialSelect" className="text-sm font-medium">Select Material:</label>
+                <select 
+                  id="materialSelect" 
+                  value={selectedMaterial} 
+                  onChange={e => setSelectedMaterial(e.target.value)} 
+                  className="w-full px-3 py-2 bg-input border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+                >
+                  <option value="" disabled>-- Choose a material --</option>
+                  {materials.map(material => {
+                    const isSupported = material.file_type === 'pdf' || material.file_type === 'txt';
+                    return (
+                      <option key={material.id} value={material.id} disabled={!isSupported}>
+                        {material.topic} - {material.filename} ({isSupported ? material.file_type : 'unsupported'})
+                      </option>
+                    );
+                  })}
+                </select>
+                <p className="text-xs text-muted-foreground pt-1">Only .pdf and .txt files are supported for AI generation.</p>
+              </div>
+
+              <div className="space-y-2">
+                <label htmlFor="aiNumQuestions" className="text-sm font-medium">Number of Questions:</label>
+                <input type="number" id="aiNumQuestions" value={aiNumQuestions} onChange={e => setAiNumQuestions(parseInt(e.target.value, 10))} min="1" max="20" className="w-24 px-3 py-2 bg-input border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-primary"/>
+              </div>
+            </div>
+
+            <div className="pt-2">
+              <button type="button" onClick={handleGenerateAIQuiz} disabled={aiGenerating || !selectedMaterial} className="bg-primary text-primary-foreground px-4 py-2 rounded-md hover:bg-primary/90 disabled:opacity-50 flex items-center gap-2">
+                {aiGenerating ? 'Generating...' : <><Sparkles size={18}/> Generate Questions</>}
               </button>
             </div>
-            {aiError && <p className="text-sm text-destructive">{aiError}</p>}
+
+            {aiError && <p className="text-sm text-destructive pt-2">{aiError}</p>}
           </div>
 
           <fieldset className="space-y-4 border-b border-border pb-6">
