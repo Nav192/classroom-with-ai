@@ -1,28 +1,31 @@
 import io
-import google.generativeai as genai
-from supabase import Client
+import httpx # New import for making HTTP requests
+import google.generativeai as genai # Keep for process_material_for_rag if still used
+from supabase import Client # Keep for process_material_for_rag if still used
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-from unstructured.partition.auto import partition # DITAMBAHKAN
+from unstructured.partition.auto import partition
+from typing import List
 
 from ..config import settings
+from backend.supabase_client import supabase # Keep for process_material_for_rag if still used
 
-# Konfigurasi Gemini
+# Konfigurasi Gemini (only if process_material_for_rag still uses it)
 try:
     genai.configure(api_key=settings.gemini_api_key)
 except Exception as e:
     print(f"Tidak dapat mengkonfigurasi Gemini API key: {e}")
 
+# Remove chat_model and embeddingModel initialization as they are now in Edge Function
+# Remove generate_query_embedding as it's now in Edge Function
 
 def get_text_from_file(file_content: bytes, mime_type: str) -> str:
     """Mengekstrak teks dari konten byte sebuah file menggunakan unstructured."""
-    # Sepenuhnya mengandalkan unstructured untuk mem-parsing berbagai jenis dokumen
     try:
-        elements = partition(file=io.BytesIO(file_content), content_type=mime_type)
+        elements = partition(file=io.BytesIO(file_content), content_type=mime_type, languages=['id']) # Added languages=['id']
         return "\n".join([str(el) for el in elements])
     except Exception as e:
         print(f"Error mengekstrak teks dengan unstructured untuk mime_type {mime_type}: {e}")
         return ""
-
 
 def chunk_text(text: str, chunk_size: int = 1000, chunk_overlap: int = 200) -> list[str]:
     """Memecah teks menjadi potongan-potongan yang saling tumpang tindih."""
@@ -33,12 +36,11 @@ def chunk_text(text: str, chunk_size: int = 1000, chunk_overlap: int = 200) -> l
     )
     return text_splitter.split_text(text)
 
-
 def generate_embeddings(text_chunks: list[str]) -> list[list[float]]:
     """Membuat embeddings untuk daftar potongan teks menggunakan Gemini."""
     if not text_chunks:
         return []
-    model = 'models/embedding-004'
+    model = 'models/text-embedding-004' # Changed model name
     result = genai.embed_content(model=model, content=text_chunks, task_type="retrieval_document")
     return result['embedding']
 
@@ -90,3 +92,51 @@ def process_material_for_rag(material_id: str, storage_path: str, sb: Client):
 
     except Exception as e:
         print(f"Error memproses materi {material_id} untuk RAG: {e}")
+
+class RAGService:
+    async def get_ai_response_for_class(self, user_id: str, class_id: str, question: str) -> str:
+        try:
+            # Construct the URL for the Supabase Edge Function
+            # This assumes the Edge Function is deployed and accessible
+            # The URL format is typically: https://<project-ref>.supabase.co/functions/v1/<function-name>
+            # We need to get SUPABASE_URL from settings and append the function path.
+            edge_function_url = f"{settings.supabase_url}/functions/v1/ai-chat"
+
+            headers = {
+                "Content-Type": "application/json",
+                # Pass the Authorization header from the incoming request if available
+                # This assumes the FastAPI endpoint receives the user's JWT
+                "Authorization": f"Bearer {user_id}" # user_id here is actually the JWT token
+            }
+            payload = {
+                "class_id": class_id,
+                "question": question
+            }
+
+            print(f"DEBUG: Sending Authorization header to Edge Function: {headers['Authorization']}") # DEBUG PRINT
+
+            async with httpx.AsyncClient() as client:
+                response = await client.post(edge_function_url, headers=headers, json=payload)
+                response.raise_for_status() # Raise an exception for 4xx/5xx responses
+
+                edge_function_response = response.json()
+                
+                if "response" in edge_function_response:
+                    return edge_function_response["response"]
+                elif "error" in edge_function_response:
+                    print(f"Error from Edge Function: {edge_function_response['error']}")
+                    return f"Maaf, terjadi kesalahan pada AI Assistant: {edge_function_response['error']}"
+                else:
+                    return "Maaf, terjadi kesalahan yang tidak diketahui dari AI Assistant."
+
+        except httpx.HTTPStatusError as e:
+            print(f"HTTP error calling Edge Function: {e.response.status_code} - {e.response.text}")
+            return f"Maaf, terjadi kesalahan saat menghubungi AI Assistant (Kode: {e.response.status_code})."
+        except httpx.RequestError as e:
+            print(f"Request error calling Edge Function: {e}")
+            return "Maaf, terjadi masalah jaringan saat menghubungi AI Assistant."
+        except Exception as e:
+            print(f"Error in get_ai_response_for_class (Python backend): {e}")
+            return "Maaf, terjadi kesalahan internal saat mencoba menjawab pertanyaan Anda."
+
+rag_service = RAGService()

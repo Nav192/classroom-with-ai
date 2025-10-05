@@ -66,4 +66,10 @@ export const generateQuizFromMaterial = async (payload) => {
   return response.json();
 };
 
+// New function to ask AI Assistant
+export const askAiAssistant = async (classId, question) => {
+  const response = await api.post(`/ai/chat/${classId}`, { question });
+  return response.data;
+};
+
 export default api;

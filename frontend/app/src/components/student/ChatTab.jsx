@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef } from "react";
 import { Send, User, Bot } from "lucide-react";
-import api from "../../services/api";
+import { askAiAssistant } from "../../services/api"; // Import the new function
 
 // Chat Tab Component
-export default function ChatTab() {
+// It now accepts classId as a prop
+export default function ChatTab({ classId }) {
   const [messages, setMessages] = useState([
     { sender: 'ai', text: 'Hello! Ask me anything about the materials in your joined classes.' }
   ]);
@@ -23,10 +24,12 @@ export default function ChatTab() {
     setInputQuery("");
     setIsTyping(true);
     try {
-      const response = await api.post("/ai/chat", { query: inputQuery });
-      const aiMessage = { sender: 'ai', text: response.data.answer };
+      // Use the new askAiAssistant function and pass classId
+      const response = await askAiAssistant(classId, inputQuery);
+      const aiMessage = { sender: 'ai', text: response.response }; // Access response.response
       setMessages(prev => [...prev, aiMessage]);
     } catch (err) {
+      console.error("Error asking AI assistant:", err);
       const errorMessage = { sender: 'ai', text: 'Sorry, an error occurred. Please try again later.' };
       setMessages(prev => [...prev, errorMessage]);
     } finally {

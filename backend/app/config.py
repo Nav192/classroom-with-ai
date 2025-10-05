@@ -10,6 +10,7 @@ class Settings(BaseSettings):
 	SUPABASE_JWT_SECRET: str = os.getenv("SUPABASE_JWT_SECRET")
 	SUPABASE_SERVICE_KEY: str = os.getenv("SUPABASE_SERVICE_KEY")
 	supabase_anon_key: str | None = None
+	supabase_url: str = os.getenv("SUPABASE_URL") # Added this line for lowercase access
 
 	# AI / Gemini
 	gemini_api_key: str | None = None

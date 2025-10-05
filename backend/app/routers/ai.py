@@ -1,114 +1,71 @@
-import google.generativeai as genai
-import json
-from fastapi import APIRouter, Depends, HTTPException, status
+import httpx # New import for making HTTP requests
+from fastapi import APIRouter, Depends, HTTPException, status # Added this line
 from pydantic import BaseModel
-from supabase import Client
-from typing import List, Dict, Literal
-from uuid import UUID
-
-from ..dependencies import get_supabase, get_current_student_user, get_current_teacher_user, verify_class_membership
-from ..config import settings
-
-# Konfigurasi Gemini
-try:
-    genai.configure(api_key=settings.gemini_api_key)
-except Exception as e:
-    print(f"Tidak dapat mengkonfigurasi Gemini API key: {e}")
+from backend.app.dependencies import get_current_user, get_raw_token # Modified import
+from backend.app.schemas import QuizGenerationRequest, QuizGenerationResponse
+from backend.app.services.rag import rag_service
+from ..config import settings # New import for settings
 
 router = APIRouter()
 
-# --- Models ---
-class ChatRequest(BaseModel):
-    query: str
-class ChatResponse(BaseModel):
-    answer: str
-    sources: List[Dict]
+# New Pydantic model for AI chat request
+class AIChatRequest(BaseModel):
+    question: str
 
-class GenerateQuizRequest(BaseModel):
-    topic: str
-    question_type: Literal['mcq', 'true_false', 'essay']
-    num_questions: int = 5
-
-class GeneratedQuestion(BaseModel):
-    text: str
-    type: str
-    options: List[str] | None = None
-    answer: str
-
-class GenerateQuizResponse(BaseModel):
-    questions: List[GeneratedQuestion]
-
-# --- Endpoints ---
-@router.post("/chat", response_model=ChatResponse)
-def chat(payload: ChatRequest, sb: Client = Depends(get_supabase), current_student: dict = Depends(get_current_student_user)):
-    user_id = current_student.get("id")
-    query = payload.query
-    try:
-        # Get all classes the student is a member of
-        member_classes_res = sb.table("class_members").select("class_id").eq("user_id", user_id).execute()
-        if not member_classes_res.data:
-            raise HTTPException(status_code=403, detail="You are not enrolled in any classes.")
-        user_class_ids = [str(c['class_id']) for c in member_classes_res.data]
-
-        query_embedding = genai.embed_content(model='models/embedding-004', content=query, task_type="retrieval_query")['embedding']
-        
-        # Call RPC with the user's class IDs to scope the search
-        relevant_chunks = sb.rpc("match_material_chunks", {
-            "query_embedding": query_embedding, 
-            "match_threshold": 0.75, 
-            "match_count": 5,
-            "class_ids": user_class_ids
-        }).execute().data
-
-        if not relevant_chunks:
-            return ChatResponse(answer="Maaf, saya tidak dapat menemukan informasi yang relevan di materi kelas Anda.", sources=[])
-        
-        context_str = "\n---\n".join([chunk['text'] for chunk in relevant_chunks])
-        prompt = f"""Anda adalah asisten belajar AI. Jawab pertanyaan siswa hanya berdasarkan konteks materi yang diberikan. Jika jawaban tidak ada dalam konteks, katakan 'Maaf, saya tidak dapat menemukan jawaban untuk pertanyaan itu dalam materi yang diberikan.'\n\nKonteks Materi:\n{context_str}\n\nPertanyaan Siswa: {query}\n\nJawaban:"""
-        model = genai.GenerativeModel('gemini-pro')
-        ai_response = model.generate_content(prompt)
-        answer = ai_response.text
-        sb.table("ai_interactions").insert({"user_id": user_id, "prompt": query, "response": answer}).execute()
-        sources = [{"material_id": chunk['material_id'], "text": chunk['text']} for chunk in relevant_chunks]
-        return ChatResponse(answer=answer, sources=sources)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Terjadi kesalahan pada layanan AI: {str(e)}")
-
-@router.post("/generate-quiz/{class_id}", response_model=GenerateQuizResponse, dependencies=[Depends(verify_class_membership)])
-def generate_quiz(
-    class_id: UUID,
-    payload: GenerateQuizRequest, 
-    sb: Client = Depends(get_supabase), 
-    current_teacher: dict = Depends(get_current_teacher_user)
+@router.post("/generate-quiz", response_model=QuizGenerationResponse)
+async def generate_quiz_endpoint(
+    request: QuizGenerationRequest,
+    current_user: str = Depends(get_raw_token), # Changed to get_raw_token
 ):
-    """Generates quiz questions based on materials for a specific topic in a class."""
     try:
-        materials_res = sb.table("materials").select("id").eq("class_id", str(class_id)).eq("topic", payload.topic).execute()
-        if not materials_res.data:
-            raise HTTPException(status_code=404, detail=f"No materials found for topic '{payload.topic}' in this class.")
-        
-        material_ids = [m['id'] for m in materials_res.data]
-        chunks_res = sb.table("material_embeddings").select("text").in_("material_id", material_ids).execute()
-        if not chunks_res.data:
-            raise HTTPException(status_code=404, detail="No text content available from the selected materials to generate a quiz.")
+        # Construct the URL for the Supabase Edge Function
+        edge_function_url = f"{settings.supabase_url}/functions/v1/generate-quiz"
 
-        context = "\n".join([chunk['text'] for chunk in chunks_res.data])
-        prompt = f"""Anda adalah AI pembuat soal. Berdasarkan HANYA pada konteks di bawah, buatlah {payload.num_questions} soal kuis tipe '{payload.question_type}'.
-        Konteks: --- {context[:8000]} ---
-        Instruksi Format: Kembalikan HANYA sebuah array JSON valid. Setiap objek harus memiliki properti: \"text\" (string), \"type\" (string, isi dengan '{payload.question_type}'), \"options\" (array of strings, HANYA untuk 'mcq' atau 'true_false'), dan \"answer\" (string). Untuk 'mcq', berikan 4 pilihan. Untuk 'true_false', options harus [\"True\", \"False\"] . Untuk 'essay', 'options' tidak perlu ada. Pastikan 'answer' adalah salah satu dari 'options'."""
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {current_user}" # current_user is now the raw JWT token
+        }
+        payload = {
+            "material_id": request.material_id,
+            "question_type": request.quiz_type, # Map quiz_type to question_type for Edge Function
+            "num_questions": request.num_questions
+        }
 
-        model = genai.GenerativeModel('gemini-pro')
-        response = model.generate_content(prompt)
-        cleaned_response = response.text.strip().replace("```json", "").replace("```", "").strip()
-        
-        try:
-            questions = json.loads(cleaned_response)
-            if not isinstance(questions, list) or not all("text" in q and "answer" in q for q in questions):
-                raise ValueError("AI response is not a valid list of questions.")
-        except (json.JSONDecodeError, ValueError) as e:
-            raise HTTPException(status_code=500, detail="Failed to parse the response from the AI. Please try again.")
+        async with httpx.AsyncClient() as client:
+            response = await client.post(edge_function_url, headers=headers, json=payload)
+            response.raise_for_status() # Raise an exception for 4xx/5xx responses
 
-        return GenerateQuizResponse(questions=questions)
+            edge_function_response = response.json()
+            
+            # The Edge Function returns a JSON with a "questions" key
+            # We need to wrap it in quiz_data for QuizGenerationResponse
+            return QuizGenerationResponse(quiz_data=edge_function_response) # Assuming edge_function_response is already the quiz_data
+
+    except httpx.HTTPStatusError as e:
+        print(f"HTTP error calling generate-quiz Edge Function: {e.response.status_code} - {e.response.text}")
+        raise HTTPException(status_code=e.response.status_code, detail=f"Error from quiz generation service: {e.response.text}")
+    except httpx.RequestError as e:
+        print(f"Request error calling generate-quiz Edge Function: {e}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Network error calling quiz generation service: {e}")
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"An error occurred in the AI service: {str(e)}")
+        print(f"Error in generate_quiz_endpoint: {e}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
+# New endpoint for AI chat
+@router.post("/chat/{class_id}")
+async def ai_chat_endpoint(
+    class_id: str,
+    request: AIChatRequest,
+    current_user: str = Depends(get_raw_token), # Changed to get_raw_token
+):
+    try:
+        response = await rag_service.get_ai_response_for_class(
+            user_id=current_user, # user_id is now the raw JWT token
+            class_id=class_id,
+            question=request.question
+        )
+        return {"response": response}
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))

@@ -46,7 +46,7 @@ export default function ClassTabs({ selectedClass, onBackToClassSelection, initi
         {activeTab === "materials" && <MaterialsTab classId={selectedClass.id} />}
         {activeTab === "quizzes" && <QuizzesTab classId={selectedClass.id} />}
         {activeTab === "results" && <StudentClassResults classId={selectedClass.id} />}
-        {activeTab === "chat" && <ChatTab />}
+        {activeTab === "chat" && <ChatTab classId={selectedClass.id} />} {/* Pass classId here */}
       </div>
     </div>
   );

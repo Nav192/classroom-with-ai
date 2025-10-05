@@ -29,6 +29,7 @@ import ForgotPassword from "./pages/ForgotPassword.jsx";
 import AdminLogin from "./pages/AdminLogin.jsx";
 import EssayGradingPage from "./pages/EssayGradingPage.jsx";
 import QuizSubmissionsPage from "./pages/QuizSubmissionsPage.jsx"; // Import new component
+import DefinitionManager from "./pages/DefinitionManager.jsx";
 
 const INACTIVITY_TIMEOUT = 15 * 60 * 1000; // 15 minutes in milliseconds
 
@@ -185,6 +186,15 @@ function AppContent() {
             <ProtectedRoute
               allowedRoles={["teacher"]}
               Component={StudentProgress}
+            />
+          }
+        />
+        <Route
+          path="/teacher/definitions"
+          element={
+            <ProtectedRoute
+              allowedRoles={["teacher"]}
+              Component={DefinitionManager}
             />
           }
         />

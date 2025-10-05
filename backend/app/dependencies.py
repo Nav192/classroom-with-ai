@@ -23,8 +23,17 @@ def get_supabase_admin() -> Client:
     key: str = settings.SUPABASE_SERVICE_KEY
     return create_client(url, key)
 
-def get_current_user(token: str = Depends(oAuth2_scheme), sb_admin: Client =
-  Depends(get_supabase_admin)):
+def get_raw_token(token: str = Depends(oAuth2_scheme)) -> str:
+    """Returns the raw JWT token string."""
+    if token is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not authenticated",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    return token
+
+def get_current_user(token: str = Depends(oAuth2_scheme), sb_admin: Client = Depends(get_supabase_admin)):
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",

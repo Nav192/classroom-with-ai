@@ -103,9 +103,13 @@ async def upload_material(
             raise HTTPException(status_code=500, detail="Failed to save material metadata via RPC.")
 
         material_record = db_response.data[0]
-        material_id = material_record['material_id']
+        material_id = material_record['returned_material_id'] # Changed from 'material_id'
 
-        return {"message": "Material uploaded successfully via RPC.", "material_id": material_id}
+        # 3. Trigger RAG processing in the background
+        from backend.app.services.rag import process_material_for_rag # Import here to avoid circular dependency if rag imports from routers
+        background_tasks.add_task(process_material_for_rag, material_id, storage_path, sb_admin)
+
+        return {"message": "Material uploaded successfully via RPC and RAG processing initiated.", "material_id": material_id}
 
     except Exception as e:
         # Force print the error to the terminal for debugging
