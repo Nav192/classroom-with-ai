@@ -86,7 +86,9 @@ const StudentClassResults = ({ classId }) => {
                                     <TableCell component="th" scope="row">
                                         {result.quiz_title || `Quiz ID: ${result.quiz_id}`}
                                     </TableCell>
-                                    <TableCell align="right">{result.score} / {result.total}</TableCell>
+                                    <TableCell align="right">
+                                      {result.total > 0 ? `${Math.round((result.score / result.total) * 100)} / 100` : 'N/A'}
+                                    </TableCell>
                                     <TableCell align="right">{result.attempt_number}</TableCell>
                                     <TableCell align="center">{new Date(result.created_at).toLocaleString()}</TableCell>
                                     <TableCell align="center">

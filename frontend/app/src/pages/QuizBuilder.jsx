@@ -485,7 +485,7 @@ export default function QuizBuilder() {
                       className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
                   >
                       <option value="" disabled>Select correct answer</option>
-                      {q.options.map((option, optIndex) => (
+                      {(q.options || []).map((option, optIndex) => (
                           <option key={optIndex} value={option}>{option}</option>
                       ))}
                   </select>

@@ -78,7 +78,7 @@ const QuizResultDetails = () => {
                 )}
             </Box>
             <Box sx={{ mb: 3, display: 'flex', gap: 2, alignItems: 'center' }}>
-                <Chip label={`Score: ${score} / ${total_questions}`} color="primary" />
+                <Chip label={`Score: ${total_questions > 0 ? Math.round((score / total_questions) * 100) : 0} / 100`} color="primary" />
                 <Chip label={`Submitted: ${new Date(submitted_at).toLocaleString()}`} variant="outlined" />
                 {max_attempts !== null && (
                     <Chip label={`Attempts: ${attempts_taken} / ${max_attempts}`} color="info" />

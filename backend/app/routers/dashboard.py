@@ -102,8 +102,10 @@ def get_student_quiz_status(
                 total = latest_result['total']
                 
                 # For overall average calculation
-                overall_weighted_sum_scores += (score * quiz_weight)
-                overall_total_weights += quiz_weight
+                if score is not None and total is not None and total > 0:
+                    score_percentage = (score / total) * 100
+                    overall_weighted_sum_scores += (score_percentage * quiz_weight)
+                    overall_total_weights += quiz_weight
 
                 # For specific quiz status (if this is the quiz_id we're looking for)
                 if q_id == str(quiz_id):
@@ -171,7 +173,7 @@ def get_class_overall_student_averages(
         return ClassOverallAverages(class_id=class_id, class_name=class_name, quizzes=quizzes_overview, students=[])
 
     # 4. Get all results for all students for all quizzes in this class
-    all_results_res = sb.table("results").select("user_id, quiz_id, score, created_at").in_("user_id", student_ids).in_("quiz_id", all_class_quiz_ids).execute()
+    all_results_res = sb.table("results").select("user_id, quiz_id, score, total, created_at").in_("user_id", student_ids).in_("quiz_id", all_class_quiz_ids).execute()
     all_results_data = all_results_res.data or []
 
     # 5. Group all results by student and then by quiz to find the highest score for each quiz
@@ -201,9 +203,12 @@ def get_class_overall_student_averages(
             if q_id in student_all_quiz_results:
                 latest_result = student_all_quiz_results[q_id]
                 score = latest_result['score']
-                
-                overall_weighted_sum_scores += (score * quiz_weight)
-                overall_total_weights += quiz_weight
+                total = latest_result.get('total') # Use .get for safety
+
+                if score is not None and total is not None and total > 0:
+                    score_percentage = (score / total) * 100
+                    overall_weighted_sum_scores += (score_percentage * quiz_weight)
+                    overall_total_weights += quiz_weight
 
         overall_weighted_average_score = None
         if overall_total_weights > 0:

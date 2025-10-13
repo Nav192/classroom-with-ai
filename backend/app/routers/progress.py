@@ -138,7 +138,7 @@ def get_my_progress_in_class(
             mats_completed = sb.table("materials_progress").select("id", count='exact').eq("user_id", user_id).eq("status", "completed").in_("material_id", materials_in_class_ids).execute().count
         
         # Fetch all results for the current user in this class
-        all_user_quiz_results = sb.table("results").select("quiz_id, score, created_at").eq("user_id", user_id).in_("quiz_id", class_quiz_ids).execute().data or []
+        all_user_quiz_results = sb.table("results").select("quiz_id, score, total, created_at").eq("user_id", user_id).in_("quiz_id", class_quiz_ids).execute().data or []
         print(f"DEBUG: all_user_quiz_results: {all_user_quiz_results}")
 
         # Get the highest score for each quiz
@@ -156,10 +156,12 @@ def get_my_progress_in_class(
 
         for quiz_id, result in highest_scores_per_quiz.items():
             score = result['score']
-            weight = class_quiz_weights.get(quiz_id, 0) # Default to 0 if weight not found
+            total = result.get('total') # Use .get for safety
+            weight = class_quiz_weights.get(quiz_id, 0)
 
-            if score is not None:
-                weighted_sum_scores += score * weight
+            if score is not None and total is not None and total > 0:
+                score_percentage = (score / total) * 100
+                weighted_sum_scores += score_percentage * weight
                 total_weights += weight
         
         quiz_average_score_for_overall = 0.0 # This will be the weighted average score
@@ -274,16 +276,23 @@ def get_student_progress_in_class(
             
             quizzes_attempted = len(highest_student_results)
             
-            # Calculate final score from weighted quizzes
-            final_score = 0
+            # Calculate weighted average score
+            weighted_sum_scores = 0
+            total_weights = 0
             for result in highest_student_results:
                 quiz_id_str = result['quiz_id']
-                quiz_score = result['score']
-                # The weight is stored as a percentage (e.g., 10 for 10%)
-                quiz_weight = class_quiz_weights.get(quiz_id_str, 0) # Default to 0 if weight not found
+                score = result['score']
+                total = result.get('total')
+                weight = class_quiz_weights.get(quiz_id_str, 0)
 
-                if quiz_score is not None:
-                    final_score += quiz_score * (quiz_weight / 100.0)
+                if score is not None and total is not None and total > 0:
+                    score_percentage = (score / total) * 100
+                    weighted_sum_scores += score_percentage * weight
+                    total_weights += weight
+
+            average_score = 0.0
+            if total_weights > 0:
+                average_score = weighted_sum_scores / total_weights
 
             student_details.append(StudentProgressDetail(
                 user_id=student_id,
@@ -291,7 +300,7 @@ def get_student_progress_in_class(
                 email=profile['email'],
                 materials_completed=mats_completed,
                 quizzes_attempted=quizzes_attempted,
-                average_score=round(final_score, 2) # Assign the calculated final score
+                average_score=round(average_score, 2) # Assign the calculated final score
             ))
 
         return StudentProgressDetailsResponse(total_materials=total_materials, student_details=student_details)

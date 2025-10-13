@@ -216,6 +216,9 @@ export default function QuizTaker() {
           );
         }
         
+        const { score, total } = response.data;
+        const percentageScore = total > 0 ? Math.round((score / total) * 100) : 0;
+
         const quizStatus = response.data.status;
         if (quizStatus === "pending_review") {
           setSubmissionMessage(
@@ -223,7 +226,7 @@ export default function QuizTaker() {
           );
         } else {
           setSubmissionMessage(
-            `Quiz submitted successfully! Your score: ${response.data.score}.`
+            `Quiz submitted successfully! Your score: ${percentageScore} / 100.`
           );
         }
       } catch (err) {
