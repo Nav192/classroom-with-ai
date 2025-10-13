@@ -58,28 +58,30 @@ def get_class_progress(
 ):
     """(For Teachers) Get progress summary for all students in a specific class."""
     try:
-        materials_in_class = sb_admin.table("materials").select("id", count='exact').eq("class_id", str(class_id)).execute()
-        quizzes_in_class = sb_admin.table("quizzes").select("id", count='exact').eq("class_id", str(class_id)).execute()
-        total_materials = materials_in_class.count
-        total_quizzes = quizzes_in_class.count
-        materials_in_class_ids = [m['id'] for m in materials_in_class.data]
-        quizzes_in_class_ids = [q['id'] for q in quizzes_in_class.data]
+        materials_in_class_res = sb_admin.table("materials").select("id, topic", count='exact').eq("class_id", str(class_id)).execute()
+        total_materials = materials_in_class_res.count
+        materials_in_class_data = materials_in_class_res.data or []
+        materials_in_class_ids = [m['id'] for m in materials_in_class_data]
 
-        # Get all students in the class
+        quizzes_in_class_res = sb_admin.table("quizzes").select("id, topic", count='exact').eq("class_id", str(class_id)).execute()
+        total_quizzes = quizzes_in_class_res.count
+        quizzes_in_class_data = quizzes_in_class_res.data or []
+        quizzes_in_class_ids = [q['id'] for q in quizzes_in_class_data]
+        
+        topic_to_quiz_id_map = {q['topic']: q['id'] for q in quizzes_in_class_data if q.get('topic')}
+
         class_members = sb_admin.table("class_members").select("user_id").eq("class_id", str(class_id)).execute().data or []
         student_ids = [member['user_id'] for member in class_members]
 
         if not student_ids:
             return ClassProgressResponse(class_id=class_id, total_materials=total_materials, total_quizzes=total_quizzes, student_summaries=[])
 
-        # Get profiles to filter for students and get emails
         student_profiles = sb_admin.table("profiles").select("id, email, username, role").in_("id", student_ids).eq("role", "student").execute().data or []
         student_id_map = {p['id']: {'email': p['email'], 'username': p['username']} for p in student_profiles}
 
-        # Fetch all progress data for these students for this class
         materials_progress = []
         if materials_in_class_ids:
-            materials_progress = sb_admin.table("materials_progress").select("user_id, status").in_("user_id", student_ids).in_("material_id", materials_in_class_ids).execute().data or []
+            materials_progress = sb_admin.table("materials_progress").select("user_id, material_id, status").in_("user_id", student_ids).in_("material_id", materials_in_class_ids).eq("status", "completed").execute().data or []
         
         quiz_results = []
         if quizzes_in_class_ids:
@@ -87,8 +89,25 @@ def get_class_progress(
 
         summaries = []
         for student_id, student_data in student_id_map.items():
-            mats_completed = len([p for p in materials_progress if p['user_id'] == student_id and p['status'] == 'completed'])
-            quizzes_attempted = len(set(r['quiz_id'] for r in quiz_results if r['user_id'] == student_id))
+            student_viewed_material_ids = {p['material_id'] for p in materials_progress if p['user_id'] == student_id}
+            student_attempted_quiz_ids = {r['quiz_id'] for r in quiz_results if r['user_id'] == student_id}
+            
+            truly_completed_count = 0
+            for material in materials_in_class_data:
+                material_id = material['id']
+                material_topic = material['topic']
+                is_viewed = material_id in student_viewed_material_ids
+                
+                if is_viewed:
+                    associated_quiz_id = topic_to_quiz_id_map.get(material_topic)
+                    if associated_quiz_id:
+                        if associated_quiz_id in student_attempted_quiz_ids:
+                            truly_completed_count += 1
+                    else:
+                        truly_completed_count += 1
+            
+            mats_completed = truly_completed_count
+            quizzes_attempted = len(student_attempted_quiz_ids)
             
             mat_progress_percentage = (mats_completed / total_materials * 100) if total_materials > 0 else 0
             quiz_progress_percentage = (quizzes_attempted / total_quizzes * 100) if total_quizzes > 0 else 0
@@ -118,30 +137,49 @@ def get_my_progress_in_class(
     current_user: dict = Depends(get_current_user),
 ):
     user_id = current_user.get("id")
-    print(f"DEBUG: get_my_progress_in_class called for user_id: {user_id}, class_id: {class_id}")
-
     try:
-        materials_in_class = sb.table("materials").select("id", count='exact').eq("class_id", str(class_id)).execute()
-        total_materials = materials_in_class.count
-        materials_in_class_ids = [m['id'] for m in materials_in_class.data or []]
-        print(f"DEBUG: total_materials: {total_materials}, materials_in_class_ids: {materials_in_class_ids}")
+        materials_in_class_res = sb.table("materials").select("id, topic", count='exact').eq("class_id", str(class_id)).execute()
+        total_materials = materials_in_class_res.count
+        materials_in_class_data = materials_in_class_res.data or []
+        materials_in_class_ids = [m['id'] for m in materials_in_class_data]
 
-        quizzes_in_class_res = sb.table("quizzes").select("id, weight").eq("class_id", str(class_id)).execute()
-        class_quiz_weights = {q['id']: q['weight'] for q in quizzes_in_class_res.data or []}
-        total_quizzes = len(class_quiz_weights) # Total quizzes in class
-        class_quiz_ids = list(class_quiz_weights.keys())
-        print(f"DEBUG: total_quizzes: {total_quizzes}, class_quiz_ids: {class_quiz_ids}, class_quiz_weights: {class_quiz_weights}")
-
-        # Get user's progress
-        mats_completed = 0
-        if materials_in_class_ids:
-            mats_completed = sb.table("materials_progress").select("id", count='exact').eq("user_id", user_id).eq("status", "completed").in_("material_id", materials_in_class_ids).execute().count
+        quizzes_in_class_res = sb.table("quizzes").select("id, weight, topic").eq("class_id", str(class_id)).execute()
+        quizzes_in_class_data = quizzes_in_class_res.data or []
         
-        # Fetch all results for the current user in this class
-        all_user_quiz_results = sb.table("results").select("quiz_id, score, total, created_at").eq("user_id", user_id).in_("quiz_id", class_quiz_ids).execute().data or []
-        print(f"DEBUG: all_user_quiz_results: {all_user_quiz_results}")
+        class_quiz_weights = {q['id']: q['weight'] for q in quizzes_in_class_data}
+        total_quizzes = len(class_quiz_weights)
+        class_quiz_ids = list(class_quiz_weights.keys())
+        
+        topic_to_quiz_id_map = {q['topic']: q['id'] for q in quizzes_in_class_data if q.get('topic')}
 
-        # Get the highest score for each quiz
+        viewed_material_ids = set()
+        if materials_in_class_ids:
+            viewed_materials_res = sb.table("materials_progress").select("material_id").eq("user_id", user_id).eq("status", "completed").in_("material_id", materials_in_class_ids).execute()
+            viewed_material_ids = {p['material_id'] for p in (viewed_materials_res.data or [])}
+
+        all_user_quiz_results = []
+        if class_quiz_ids:
+            all_user_quiz_results = sb.table("results").select("quiz_id, score, total, created_at").eq("user_id", user_id).in_("quiz_id", class_quiz_ids).execute().data or []
+        
+        attempted_quiz_ids = {r['quiz_id'] for r in all_user_quiz_results}
+
+        truly_completed_count = 0
+        for material in materials_in_class_data:
+            material_id = material['id']
+            material_topic = material['topic']
+            is_viewed = material_id in viewed_material_ids
+            
+            if is_viewed:
+                associated_quiz_id = topic_to_quiz_id_map.get(material_topic)
+                if associated_quiz_id:
+                    if associated_quiz_id in attempted_quiz_ids:
+                        truly_completed_count += 1
+                else:
+                    truly_completed_count += 1
+        
+        mats_completed = truly_completed_count
+        mat_progress_percentage = (mats_completed / total_materials * 100) if total_materials > 0 else 0
+        
         highest_scores_per_quiz = {}
         for result in all_user_quiz_results:
             quiz_id = result['quiz_id']
@@ -153,10 +191,9 @@ def get_my_progress_in_class(
         
         weighted_sum_scores = 0
         total_weights = 0
-
         for quiz_id, result in highest_scores_per_quiz.items():
             score = result['score']
-            total = result.get('total') # Use .get for safety
+            total = result.get('total')
             weight = class_quiz_weights.get(quiz_id, 0)
 
             if score is not None and total is not None and total > 0:
@@ -164,17 +201,14 @@ def get_my_progress_in_class(
                 weighted_sum_scores += score_percentage * weight
                 total_weights += weight
         
-        quiz_average_score_for_overall = 0.0 # This will be the weighted average score
+        quiz_average_score_for_overall = 0.0
         if total_weights > 0:
             quiz_average_score_for_overall = weighted_sum_scores / total_weights
 
-        mat_progress_percentage = (mats_completed / total_materials * 100) if total_materials > 0 else 0
-        # Quizzes progress percentage for student dashboard should be completion percentage
         quiz_progress_percentage = (quizzes_attempted / total_quizzes * 100) if total_quizzes > 0 else 0
 
-        # Overall progress percentage combines material completion and weighted quiz average score
         overall_progress_percentage = round((mat_progress_percentage + quiz_average_score_for_overall) / 2, 2) if (mat_progress_percentage + quiz_average_score_for_overall) > 0 else 0
-        print(f"DEBUG: Final MyProgressResponse values: mat_progress_percentage={mat_progress_percentage}, quiz_progress_percentage={quiz_progress_percentage}, overall_progress_percentage={overall_progress_percentage}")
+        
         return MyProgressResponse(
             class_id=class_id,
             materials_completed=mats_completed,
@@ -183,7 +217,7 @@ def get_my_progress_in_class(
             quizzes_attempted=quizzes_attempted,
             total_quizzes=total_quizzes,
             quizzes_progress_percentage=round(quiz_progress_percentage, 2),
-            weighted_average_quiz_score=round(quiz_average_score_for_overall, 2), # New field
+            weighted_average_quiz_score=round(quiz_average_score_for_overall, 2),
             overall_progress_percentage=overall_progress_percentage
         )
     except Exception as e:
