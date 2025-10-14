@@ -1,16 +1,17 @@
-import { leaveClass } from "../../services/api";
+import { requestLeaveClass } from "../../services/api";
 
 export default function ClassGridDisplay({ myClasses, onSelectClass, onClassLeft }) {
   const handleLeaveClass = async (classId, event) => {
     event.stopPropagation(); // Prevent triggering onSelectClass
-    if (window.confirm("Are you sure you want to leave this class? This action cannot be undone.")) {
+    if (window.confirm("Are you sure you want to request to leave this class? Your teacher must approve this action.")) {
       try {
-        await leaveClass(classId);
-        alert("Successfully left the class.");
-        onClassLeft(); // Refresh the class list
+        const response = await requestLeaveClass(classId);
+        alert(response.data.message || "Your request to leave the class has been sent for approval.");
+        // Do not call onClassLeft() anymore, as the class should remain visible
+        // until the teacher approves the request.
       } catch (error) {
-        console.error("Failed to leave class:", error);
-        alert("Failed to leave class. Please try again.");
+        console.error("Failed to request leave class:", error);
+        alert(error.response?.data?.detail || "Failed to send leave request. Please try again.");
       }
     }
   };

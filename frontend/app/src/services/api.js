@@ -41,6 +41,10 @@ export const fetchStudentQuizResults = () => api.get(`/results/history`);
 export const fetchStudentProgress = (userId) => api.get(`/student/${userId}/progress`);
 
 export const leaveClass = (classId) => api.delete(`/classes/${classId}/leave`);
+export const requestLeaveClass = (classId) => api.post(`/classes/${classId}/request-leave`);
+
+export const getLeaveRequests = (classId) => api.get(`/classes/${classId}/leave-requests`);
+export const handleLeaveRequest = (classId, studentId, action) => api.post(`/classes/${classId}/handle-leave-request`, { student_id: studentId, action });
 
 // Function to invoke the Supabase Edge Function for AI quiz generation
 export const generateQuizFromMaterial = async (payload) => {

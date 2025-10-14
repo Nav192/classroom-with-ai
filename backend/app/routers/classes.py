@@ -305,25 +305,28 @@ def get_class_details(
     return class_res.data
 
 
-@router.delete("/{class_id}/leave", status_code=status.HTTP_200_OK, summary="Allow a student to leave a class")
-def leave_class(
+@router.post("/{class_id}/request-leave", status_code=status.HTTP_200_OK, summary="Request to leave a class")
+def request_leave_class(
     class_id: UUID,
     user: dict = Depends(get_current_user),
-    db: supabase.client.Client = Depends(get_supabase)
+    db: supabase.client.Client = Depends(get_supabase_admin)
 ):
-    """Allows the current user (student) to leave a class."""
+    """Allows the current user (student) to request to leave a class."""
     user_id = user.get("id")
 
     try:
-        # Verify the user is a member of the class
-        membership_res = db.table("class_members").select("id").eq("class_id", str(class_id)).eq("user_id", user_id).single().execute()
+        # Verify the user is a member of the class and not already pending
+        membership_res = db.table("class_members").select("id, status").eq("class_id", str(class_id)).eq("user_id", user_id).single().execute()
         if not membership_res.data:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="You are not a member of this class.")
-
-        # Delete the membership entry
-        db.table("class_members").delete().eq("class_id", str(class_id)).eq("user_id", user_id).execute()
         
-        return {"message": "Successfully left the class."}
+        if membership_res.data.get('status') == 'pending_leave':
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="You have already requested to leave this class.")
+
+        # Update the membership status to 'pending_leave'
+        db.table("class_members").update({"status": "pending_leave"}).eq("class_id", str(class_id)).eq("user_id", user_id).execute()
+        
+        return {"message": "Your request to leave the class has been sent for approval."}
     except HTTPException as e:
         raise e
     except Exception as e:
@@ -387,6 +390,84 @@ def get_students_in_class(
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=traceback.format_exc())
+
+class LeaveRequestAction(BaseModel):
+    student_id: UUID
+    action: str # "approve" or "deny"
+
+@router.get("/{class_id}/leave-requests", response_model=List[StudentResponse], summary="Get pending leave requests for a class (Teacher only)")
+def get_leave_requests(
+    class_id: UUID,
+    user: dict = Depends(get_current_user),
+    db: supabase.client.Client = Depends(get_supabase)
+):
+    """Fetches all students with a 'pending_leave' status for a specific class."""
+    user_id = user.get("id")
+
+    # Verify the user is the creator of the class
+    class_res = db.table("classes").select("id, created_by").eq("id", str(class_id)).single().execute()
+    if not class_res.data or str(class_res.data["created_by"]) != str(user_id):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only the class creator can view leave requests.")
+
+    # Get pending members
+    pending_members_res = db.table("class_members").select("user_id").eq("class_id", str(class_id)).eq("status", "pending_leave").execute()
+    if not pending_members_res.data:
+        return []
+
+    student_ids = [item['user_id'] for item in pending_members_res.data]
+
+    # Fetch user details
+    users_res = db.table("profiles").select("id, username, email, role").in_("id", student_ids).execute()
+    if not users_res.data:
+        return []
+    
+    class_details_res = db.table("classes").select("class_name").eq("id", class_id).single().execute()
+    class_name = class_details_res.data["class_name"] if class_details_res.data else "Unknown Class"
+
+    # Format response
+    formatted_students = [{
+        "id": student["id"],
+        "username": student.get("username"),
+        "email": student["email"],
+        "role": student["role"],
+        "class_name": class_name
+    } for student in users_res.data]
+
+    return formatted_students
+
+@router.post("/{class_id}/handle-leave-request", status_code=status.HTTP_200_OK, summary="Handle a student's leave request (Teacher only)")
+def handle_leave_request(
+    class_id: UUID,
+    request_action: LeaveRequestAction,
+    user: dict = Depends(get_current_user),
+    db: supabase.client.Client = Depends(get_supabase_admin)
+):
+    """Approves or denies a student's request to leave a class."""
+    user_id = user.get("id")
+
+    # Verify the user is the creator of the class
+    class_res = db.table("classes").select("id, created_by").eq("id", str(class_id)).single().execute()
+    if not class_res.data or str(class_res.data["created_by"]) != str(user_id):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only the class creator can handle leave requests.")
+
+    student_id = str(request_action.student_id)
+    action = request_action.action
+
+    # Verify the student is actually pending leave
+    membership_res = db.table("class_members").select("id").eq("class_id", str(class_id)).eq("user_id", student_id).eq("status", "pending_leave").single().execute()
+    if not membership_res.data:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No pending leave request found for this student in this class.")
+
+    if action == "approve":
+        # Delete the membership entry
+        db.table("class_members").delete().eq("class_id", str(class_id)).eq("user_id", student_id).execute()
+        return {"message": "Leave request approved. Student has been removed from the class."}
+    elif action == "deny":
+        # Update status back to "enrolled"
+        db.table("class_members").update({"status": "enrolled"}).eq("class_id", str(class_id)).eq("user_id", student_id).execute()
+        return {"message": "Leave request denied. Student remains in the class."}
+    else:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid action. Must be 'approve' or 'deny'.")
 
 @router.get("/{class_id}/quiz-weights", summary="Get total quiz weight for a class")
 def get_class_quiz_weights(
