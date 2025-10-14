@@ -26,20 +26,23 @@ export default function QuizTaker() {
 
   // Function to send cheating event to backend
   const sendCheatingEvent = useCallback(
-    async (eventType, details = null, currentResultId = null) => {
+    async (eventType, details = null) => {
+      // Do not log events if the quiz hasn't been officially started (no resultId)
+      if (!resultId) return;
+
       try {
         await api.post("/results/cheating-log", {
           quiz_id: quizId,
           event_type: eventType,
           details: details,
-          result_id: currentResultId,
+          result_id: resultId, // Use resultId from state
         });
         setCheatingEventsCount((prev) => prev + 1);
       } catch (err) {
         console.error("Failed to log cheating event:", err);
       }
     },
-    [quizId]
+    [quizId, resultId] // Add resultId to the dependency array
   );
 
   // Event listeners for cheating detection
@@ -211,8 +214,7 @@ export default function QuizTaker() {
         if (cheatingEventsCount > 0) {
           sendCheatingEvent(
             "quiz_submission",
-            `Quiz submitted with ${cheatingEventsCount} detected events.`,
-            resultId
+            `Quiz submitted with ${cheatingEventsCount} detected events.`
           );
         }
         
@@ -424,6 +426,7 @@ export default function QuizTaker() {
                             disabled={!!endedAt}
                             className="form-radio text-primary focus:ring-primary"
                           />
+                          <span className="font-semibold w-5 text-center">{String.fromCharCode(65 + optIndex)}.</span>
                           <span>{option}</span>
                         </label>
                       ))}

@@ -152,6 +152,7 @@ export default function QuizSubmissionsPage() {
                 <TableCell align="center">Status</TableCell>
                 <TableCell align="right">Attempt</TableCell>
                 <TableCell align="center">Submitted At</TableCell>
+                <TableCell align="center">Cheating Detected</TableCell>
                 <TableCell align="center">Action</TableCell>
               </TableRow>
             </TableHead>
@@ -179,6 +180,32 @@ export default function QuizSubmissionsPage() {
                           </TableCell>
                           <TableCell align="center">
                             {new Date(submission.created_at).toLocaleString()}
+                          </TableCell>
+                          <TableCell align="center">
+                            {(() => {
+                              const cheatingEvents = submission.cheating_logs.filter(log => log.event_type !== 'quiz_submission');
+
+                              if (cheatingEvents.length === 0) {
+                                return <span>No</span>;
+                              }
+
+                              const eventCounts = cheatingEvents.reduce((acc, log) => {
+                                const eventType = log.event_type
+                                  .replace(/_/g, ' ')
+                                  .replace(/\b\w/g, l => l.toUpperCase());
+                                acc[eventType] = (acc[eventType] || 0) + 1;
+                                return acc;
+                              }, {});
+
+                              const eventStrings = Object.entries(eventCounts)
+                                .map(([type, count]) => `${type} (${count})`);
+
+                              return (
+                                <span className="text-red-600 font-bold">
+                                  {eventStrings.join(', ')}
+                                </span>
+                              );
+                            })()}
                           </TableCell>
                           <TableCell align="center">
                             {submission.status === "pending_review" ? (

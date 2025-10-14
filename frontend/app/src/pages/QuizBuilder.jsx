@@ -448,9 +448,25 @@ export default function QuizBuilder() {
               
               {quizType === 'mcq' && (
                 <div className="space-y-2">
+                  <label className="block text-gray-700 text-sm font-bold mb-2">Options & Correct Answer:</label>
                   {q.options.map((opt, oIndex) => (
-                    <div key={oIndex} className="flex items-center gap-2">
-                      <input type="text" value={opt} onChange={e => handleOptionChange(qIndex, oIndex, e.target.value)} placeholder={`Option ${oIndex + 1}`} required className="flex-grow p-2 bg-input border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-primary"/>
+                    <div key={oIndex} className="flex items-center gap-3">
+                      <span className="font-semibold w-5 text-center">{String.fromCharCode(65 + oIndex)}.</span>
+                      <input 
+                        type="radio" 
+                        name={`correct-answer-${qIndex}`} 
+                        checked={q.answer === opt}
+                        onChange={() => handleQuestionChange(qIndex, 'answer', opt)}
+                        className="form-radio h-5 w-5 text-primary focus:ring-primary"
+                      />
+                      <input 
+                        type="text" 
+                        value={opt} 
+                        onChange={e => handleOptionChange(qIndex, oIndex, e.target.value)} 
+                        placeholder={`Option ${oIndex + 1}`} 
+                        required 
+                        className="flex-grow p-2 bg-input border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+                      />
                       <button type="button" onClick={() => removeOption(qIndex, oIndex)} className="text-muted-foreground hover:text-destructive"><Trash2 size={16}/></button>
                     </div>
                   ))}
@@ -476,21 +492,37 @@ export default function QuizBuilder() {
                 </div>
               )}
 
-              {(quizType === 'mcq' || quizType === 'true_false') && (
+              {quizType === 'true_false' && (
                 <div className="space-y-2">
-                  <label className="block text-gray-700 text-sm font-bold mb-2 mt-4">Correct Answer:</label>
-                  <select
-                      value={q.answer || ''}
-                      onChange={(e) => handleQuestionChange(qIndex, 'answer', e.target.value)}
-                      className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
-                  >
-                      <option value="" disabled>Select correct answer</option>
-                      {(q.options || []).map((option, optIndex) => (
-                          <option key={optIndex} value={option}>{option}</option>
-                      ))}
-                  </select>
+                  <label className="block text-gray-700 text-sm font-bold mb-2">Correct Answer:</label>
+                  <div className="flex items-center gap-4">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="radio"
+                        name={`correct-answer-${qIndex}`}
+                        value="True"
+                        checked={q.answer === 'True'}
+                        onChange={() => handleQuestionChange(qIndex, 'answer', 'True')}
+                        className="form-radio h-5 w-5 text-primary focus:ring-primary"
+                      />
+                      <span>True</span>
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="radio"
+                        name={`correct-answer-${qIndex}`}
+                        value="False"
+                        checked={q.answer === 'False'}
+                        onChange={() => handleQuestionChange(qIndex, 'answer', 'False')}
+                        className="form-radio h-5 w-5 text-primary focus:ring-primary"
+                      />
+                      <span>False</span>
+                    </label>
+                  </div>
                 </div>
               )}
+
+
             </fieldset>
           ))}
           

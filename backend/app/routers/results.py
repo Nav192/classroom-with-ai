@@ -99,7 +99,7 @@ class ResultOut(BaseModel):
     quiz_id: UUID
     user_id: UUID
     score: Optional[int] # Score can be null if pending review
-    total: int
+    total: Optional[int] = None
     attempt_number: int
     started_at: datetime
     ended_at: Optional[datetime]
