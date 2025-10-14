@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { createClient } from '@supabase/supabase-js';
+import { Lock, AlertCircle } from 'lucide-react';
+import Logo from "../assets/SMA.png";
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
@@ -38,7 +40,7 @@ export default function ResetPassword() {
     if (error) {
       setError(error.message);
     } else {
-      setSuccess('Password updated successfully! You can now log in with your new password.');
+      setSuccess('Password updated successfully! Redirecting to login...');
       setTimeout(() => {
         navigate('/login');
       }, 3000);
@@ -48,42 +50,74 @@ export default function ResetPassword() {
   };
 
   return (
-    <div className="flex items-center justify-center min-h-screen bg-gray-100">
-      <div className="w-full max-w-md p-8 space-y-6 bg-white rounded-lg shadow-md">
-        <h2 className="text-2xl font-bold text-center text-gray-900">Reset Your Password</h2>
+    <div
+      className="flex items-center justify-center min-h-screen relative overflow-hidden"
+      style={{ backgroundColor: "#3F0066" }}
+    >
+      <div
+        className="w-full max-w-md p-6 sm:p-8 space-y-6 
+                      shadow-2xl rounded-3xl border border-white/30 
+                      animate-fade-in"
+        style={{ backgroundColor: "#7E00CC" }}
+      >
+        <div className="flex flex-col items-center gap-3 text-center">
+          <img src={Logo} alt="App Logo" className="w-25 h-25" />
+          <h1 className="text-4xl font-extrabold text-white drop-shadow-md">
+            Reset Your Password
+          </h1>
+          <p className="mt-1 text-gray-200 dark:text-gray-300 text-sm">
+            Enter your new password below
+          </p>
+        </div>
+
         {success ? (
-          <p className="text-green-600">{success}</p>
+          <div className="mt-4 flex items-center gap-2 text-sm text-green-200 bg-green-500/30 p-3 rounded-lg border border-green-400/40">
+            <AlertCircle className="w-4 h-4 shrink-0" />
+            <p className="flex-1">{success}</p>
+          </div>
         ) : (
-          <form className="space-y-6" onSubmit={handleSubmit}>
-            <div>
-              <label htmlFor="password" className="block text-sm font-medium text-gray-700">
-                New Password
-              </label>
-              <div className="mt-1">
-                <input
-                  id="password"
-                  name="password"
-                  type="password"
-                  required
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="w-full px-3 py-2 placeholder-gray-400 border border-gray-300 rounded-md shadow-sm appearance-none focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                />
-              </div>
+          <form className="space-y-5" onSubmit={handleSubmit}>
+            <div className="relative">
+              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-300 w-5 h-5" />
+              <input
+                id="password"
+                name="password"
+                type="password"
+                required
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="New Password"
+                className="w-full pl-10 pr-4 py-3 text-white placeholder-gray-300 
+                           border border-white/40 rounded-xl 
+                           bg-gradient-to-r from-white/10 to-white/5 
+                           focus-visible:ring-2 focus-visible:ring-pink-400 focus-visible:border-transparent 
+                           outline-none transition-all duration-300"
+              />
             </div>
 
             <div>
               <button
                 type="submit"
                 disabled={loading}
-                className="relative flex justify-center w-full px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md group hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                className="relative w-full flex justify-center items-center gap-2 py-3 px-4 
+                           text-white
+                           rounded-xl font-semibold shadow-lg overflow-hidden group
+                           hover:scale-[1.03] focus:outline-none focus-visible:ring-2 focus-visible:ring-purple-400 
+                           disabled:opacity-50 transition-all duration-300"
+                style={{ backgroundColor: '#341539' }}
               >
                 {loading ? 'Resetting...' : 'Reset Password'}
               </button>
             </div>
           </form>
         )}
-        {error && <p className="text-sm text-red-600">{error}</p>}
+
+        {error && (
+          <div className="mt-4 flex items-center gap-2 text-sm text-red-100 bg-red-500/30 p-3 rounded-lg border border-red-400/40">
+            <AlertCircle className="w-4 h-4 shrink-0" />
+            <p className="flex-1">{error}</p>
+          </div>
+        )}
       </div>
     </div>
   );

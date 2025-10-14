@@ -92,7 +92,7 @@ export default function StudentDashboard() {
       )}
 
       {loadingClasses ? (
-        <p className="text-center py-20">Loading your classes...</p>
+        <p className="text-center py-20 text-gray-700">Loading your classes...</p>
       ) : selectedClassDetails ? (
         <ClassTabs
           selectedClass={selectedClassDetails}
