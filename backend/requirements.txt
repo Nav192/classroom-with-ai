@@ -14,3 +14,5 @@ unstructured
 openpyxl
 google-generativeai
 langchain-text-splitters
+pdf2image
+Pillow

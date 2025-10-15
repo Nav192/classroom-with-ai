@@ -13,22 +13,8 @@ const corsHeaders = {
 const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
 const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY");
-const ILOVEPDF_PUBLIC_KEY = Deno.env.get("ILOVEPDF_PUBLIC_KEY");
-const ILOVEPDF_SECRET_KEY = Deno.env.get("ILOVEPDF_SECRET_KEY");
 
 const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
-
-// --- HELPER FUNCTION for Ilovepdf Auth ---
-async function getIlovepdfAuthToken() {
-  const response = await fetch('https://api.ilovepdf.com/v1/auth', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ public_key: ILOVEPDF_PUBLIC_KEY, secret_key: ILOVEPDF_SECRET_KEY }),
-  });
-  if (!response.ok) throw new Error('Ilovepdf authentication failed');
-  const data = await response.json();
-  return data.token;
-}
 
 // --- MAIN SERVER LOGIC ---
 serve(async (req) => {
@@ -44,63 +30,19 @@ serve(async (req) => {
     const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
       global: { headers: { Authorization: req.headers.get("Authorization")! } },
     });
-    const { data: material } = await supabase.from("materials").select("storage_path, filename").eq("id", material_id).single().throwOnError();
-    if (!material) throw new Error("Material not found in database.");
+    // 1. Retrieve all text chunks for the given material_id from material_embeddings
+    const { data: materialChunks, error: chunksError } = await supabase
+      .from("material_embeddings")
+      .select("text")
+      .eq("material_id", material_id)
+      .order("chunk_index", { ascending: true });
 
-    // 2. Download file from Supabase Storage
-    const { data: fileData, error: fileError } = await supabase.storage.from("materials").download(material.storage_path);
-    if (fileError) throw fileError;
-    if (!fileData) throw new Error("Failed to download material from storage.");
-
-    let materialContent = '';
-    const fileExtension = material.filename.split('.').pop().toLowerCase();
-
-    // 3. Process file content (PDF via Ilovepdf, TXT directly)
-    if (fileExtension === 'pdf') {
-      const token = await getIlovepdfAuthToken();
-      const headers = { 'Authorization': `Bearer ${token}` };
-
-      // 1. Start extract task
-      const startRes = await fetch('https://api.ilovepdf.com/v1/start/extract', { method: 'GET', headers });
-      if (!startRes.ok) throw new Error(`Ilovepdf start task failed: ${await startRes.text()}`);
-      const startData = await startRes.json();
-
-      // 2. Upload file
-      const formData = new FormData();
-      formData.append('task', startData.task);
-      formData.append('file', fileData, material.filename);
-      const uploadRes = await fetch(`https://${startData.server}/v1/upload`, { method: 'POST', headers, body: formData });
-      if (!uploadRes.ok) throw new Error(`Ilovepdf upload failed: ${await uploadRes.text()}`);
-      const uploadData = await uploadRes.json();
-
-      // 3. Process file using the server_filename from the upload response
-      const processHeaders = { 
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json'
-      };
-      const processBody = JSON.stringify({
-        task: startData.task,
-        tool: 'extract',
-        files: [
-          {
-            server_filename: uploadData.server_filename,
-            filename: material.filename
-          }
-        ]
-      });
-      const processRes = await fetch(`https://${startData.server}/v1/process`, { method: 'POST', headers: processHeaders, body: processBody });
-      if (!processRes.ok) throw new Error(`Ilovepdf process failed: ${await processRes.text()}`);
-
-      // 4. Download result
-      const downloadRes = await fetch(`https://${startData.server}/v1/download/${startData.task}`, { headers });
-      if (!downloadRes.ok) throw new Error(`Ilovepdf download failed: ${await downloadRes.text()}`);
-      materialContent = await downloadRes.text();
-
-    } else if (fileExtension === 'txt') {
-      materialContent = await fileData.text();
-    } else {
-      throw new Error(`File type .${fileExtension} is not supported for AI generation. Please use PDF or TXT.`);
+    if (chunksError) throw chunksError;
+    if (!materialChunks || materialChunks.length === 0) {
+      throw new Error("No processed text found for this material. Please ensure the material has been uploaded and processed for RAG.");
     }
+
+    const materialContent = materialChunks.map((chunk) => chunk.text).join("\n\n");
 
     if (!materialContent.trim()) throw new Error("Could not extract any text from the provided material.");
 

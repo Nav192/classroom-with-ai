@@ -5,6 +5,9 @@ from supabase import Client # Keep for process_material_for_rag if still used
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from unstructured.partition.auto import partition
 from typing import List
+from pdf2image import convert_from_bytes
+from PIL import Image
+import base64
 
 from ..config import settings
 from backend.supabase_client import supabase # Keep for process_material_for_rag if still used
@@ -44,7 +47,7 @@ def generate_embeddings(text_chunks: list[str]) -> list[list[float]]:
     result = genai.embed_content(model=model, content=text_chunks, task_type="retrieval_document")
     return result['embedding']
 
-def process_material_for_rag(material_id: str, storage_path: str, sb: Client):
+async def process_material_for_rag(material_id: str, storage_path: str, sb: Client):
     """Fungsi utama pipeline RAG untuk dijalankan di background."""
     print(f"Memulai pemrosesan RAG untuk material_id: {material_id}")
     try:
@@ -61,7 +64,60 @@ def process_material_for_rag(material_id: str, storage_path: str, sb: Client):
             return
 
         # 2. Ekstrak teks
-        text = get_text_from_file(file_content, mime_type)
+        all_extracted_text_parts = []
+
+        # Try to extract text using unstructured first
+        unstructured_text = get_text_from_file(file_content, mime_type)
+        if unstructured_text:
+            all_extracted_text_parts.append(unstructured_text)
+
+        # If it's a PDF, also try to extract text from images via OCR Edge Function
+        if mime_type == "application/pdf":
+            try:
+                # Convert PDF bytes to images
+                images = convert_from_bytes(file_content)
+                ocr_edge_function_url = f"{settings.supabase_url}/functions/v1/ocr-pdf-image"
+
+                for i, image in enumerate(images):
+                    # Convert PIL Image to bytes (PNG format)
+                    img_byte_arr = io.BytesIO()
+                    image.save(img_byte_arr, format='PNG')
+                    img_bytes = img_byte_arr.getvalue()
+
+                    # Base64 encode the image
+                    encoded_image = base64.b64encode(img_bytes).decode('utf-8')
+
+                    # Call the OCR Edge Function
+                    ocr_payload = {"image_base64": encoded_image}
+                    ocr_headers = {"Content-Type": "application/json"}
+
+                    async with httpx.AsyncClient(timeout=60.0) as client:
+                        ocr_response = await client.post(ocr_edge_function_url, headers=ocr_headers, json=ocr_payload)
+                        ocr_response.raise_for_status()
+                        ocr_result = ocr_response.json()
+
+                        if "extracted_text" in ocr_result and ocr_result["extracted_text"]:
+                            all_extracted_text_parts.append(ocr_result["extracted_text"])
+                            print(f"OCR successful for page {i+1} of material {material_id}")
+                        else:
+                            print(f"OCR returned no text for page {i+1} of material {material_id}")
+
+            except httpx.HTTPStatusError as e:
+                print(f"HTTP Error calling OCR Edge Function for material {material_id}: Status {e.response.status_code}")
+                print(f"Response body: {e.response.text}")
+                print(f"Full exception: {e}")
+            except httpx.RequestError as e:
+                print(f"Request Error calling OCR Edge Function for material {material_id}: {e}")
+                import traceback
+                traceback.print_exc()
+            except Exception as e:
+                print(f"Generic Error during PDF image processing or OCR for material {material_id}: {e}")
+                import traceback
+                traceback.print_exc() # Print full traceback
+            # Continue even if image OCR fails, using whatever text was extracted by unstructured
+
+        text = "\n".join(all_extracted_text_parts)
+
         if not text:
             print(f"Peringatan: Tidak ada teks yang diekstrak dari materi {material_id}.")
             return

@@ -66,15 +66,21 @@ export default function Login() {
         className="w-full max-w-md p-6 sm:p-8 space-y-6 
                       shadow-2xl rounded-3xl border border-white/30 
                       animate-fade-in"
-        style={{ backgroundColor: "#5E0099" }}
+        style={{ backgroundColor: "#D6A8C4" }}
       >
         {/* Header */}
         <div className="flex flex-col items-center gap-3 text-center">
           <img src={Logo} alt="App Logo" className="w-25 h-25" />
-          <h1 className="text-4xl font-extrabold text-white drop-shadow-md">
+          <h1
+            className="text-4xl font-extrabold drop-shadow-md"
+            style={{ color: "#341539" }}
+          >
             Welcome
           </h1>
-          <p className="mt-1 text-gray-200 dark:text-gray-300 text-sm">
+          <p
+            className="mt-1 text-gray-200 dark:text-gray-300 text-sm"
+            style={{ color: "#341539" }}
+          >
             Login to your account and continue your journey
           </p>
         </div>
@@ -83,36 +89,52 @@ export default function Login() {
         <form onSubmit={onSubmit} className="space-y-5">
           {/* Email */}
           <div className="relative">
-            <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-300 w-5 h-5" />
+            <Mail
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-300 w-5 h-5"
+              style={{ color: "#341539" }}
+            />
             <input
               id="email"
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="Email address"
-              className="w-full pl-10 pr-4 py-3 text-white placeholder-gray-300 
+              placeholderTextColor="#341539"
+              className="w-full pl-10 pr-4 py-3 text-white 
                          border border-white/40 rounded-xl 
                          bg-gradient-to-r from-white/10 to-white/5 
                          focus-visible:ring-2 focus-visible:ring-pink-400 focus-visible:border-transparent 
                          outline-none transition-all duration-300"
+              style={{
+                color: "#341539",
+                borderColor: "#341539",
+              }}
               required
             />
           </div>
 
           {/* Password */}
           <div className="relative">
-            <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-300 w-5 h-5" />
+            <Lock
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-300 w-5 h-5"
+              style={{ color: "#341539" }}
+            />
             <input
               id="password"
               type={showPassword ? "text" : "password"}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="Password"
-              className="w-full pl-10 pr-10 py-3 text-white placeholder-gray-300 
+              placeholderTextColor="#341539"
+              className="w-full pl-10 pr-10 py-3 text-white
                          border border-white/40 rounded-xl 
                          bg-gradient-to-r from-white/10 to-white/5 
                          focus-visible:ring-2 focus-visible:ring-pink-400 focus-visible:border-transparent 
                          outline-none transition-all duration-300"
+              style={{
+                color: "#341539",
+                borderColor: "#341539",
+              }}
               required
             />
             <button
@@ -128,7 +150,7 @@ export default function Login() {
             </button>
           </div>
 
-          {/* Remember me + Forgot Password */}
+          {/* Forgot Password */}
           <div className="flex items-center justify-between text-sm text-gray-200 dark:text-gray-300">
             <a
               href="/forgot-password"
@@ -137,6 +159,7 @@ export default function Login() {
                 navigate("/forgot-password");
               }}
               className="text-pink-300 hover:text-pink-200 transition"
+              style={{ color: "#341539" }}
             >
               Forgot password?
             </a>
@@ -190,6 +213,7 @@ export default function Login() {
           <Link
             to="/signup"
             className="font-medium text-pink-300 hover:text-pink-200 underline underline-offset-2"
+            style={{ color: "#341539" }}
           >
             Sign Up
           </Link>

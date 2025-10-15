@@ -51,6 +51,7 @@ async def generate_quiz_endpoint(
         print(f"Error in generate_quiz_endpoint: {e}")
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
+
 # New endpoint for AI chat
 @router.post("/chat/{class_id}")
 async def ai_chat_endpoint(
