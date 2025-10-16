@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import api from '../../services/api';
-import { BookOpen, Plus, Trash2 } from 'lucide-react';
+import { BookOpen, Plus, Trash2, Eye } from 'lucide-react';
 
 function MaterialsTab({ classId, onDataChange }) {
   const [materials, setMaterials] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [selectedMaterial, setSelectedMaterial] = useState(null);
 
   const fetchMaterials = () => {
     setLoading(true);
@@ -60,13 +61,22 @@ function MaterialsTab({ classId, onDataChange }) {
                   <p className="text-sm text-gray-500">{material.filename}</p>
                 </div>
               </div>
-              <button
-                onClick={() => handleDelete(material.id)}
-                className="p-2 text-gray-500 hover:text-red-600 transition-colors"
-                title="Delete"
-              >
-                <Trash2 size={20} />
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setSelectedMaterial(material)}
+                  className="p-2 text-gray-500 hover:text-blue-600 transition-colors"
+                  title="View Access Log"
+                >
+                  <Eye size={20} />
+                </button>
+                <button
+                  onClick={() => handleDelete(material.id)}
+                  className="p-2 text-gray-500 hover:text-red-600 transition-colors"
+                  title="Delete"
+                >
+                  <Trash2 size={20} />
+                </button>
+              </div>
             </li>
           ))}
         </ul>
@@ -80,6 +90,12 @@ function MaterialsTab({ classId, onDataChange }) {
           classId={classId}
           setIsModalOpen={setIsModalOpen}
           onMaterialUploaded={fetchMaterials}
+        />
+      )}
+      {selectedMaterial && (
+        <MaterialAccessLogModal
+          material={selectedMaterial}
+          onClose={() => setSelectedMaterial(null)}
         />
       )}
     </div>
@@ -174,6 +190,62 @@ function UploadMaterialModal({ classId, setIsModalOpen, onMaterialUploaded }) {
             </button>
           </div>
         </form>
+      </div>
+    </div>
+  );
+}
+
+function MaterialAccessLogModal({ material, onClose }) {
+  const [logs, setLogs] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (material) {
+      console.log("Fetching access logs for material:", material.id);
+      setLoading(true);
+      api
+        .get(`/materials/${material.id}/access`)
+        .then((res) => {
+          console.log("Access logs received:", res.data);
+          setLogs(res.data || []);
+        })
+        .catch((err) => {
+          console.error("Failed to load access logs:", err);
+          setError("Failed to load access logs.");
+        })
+        .finally(() => setLoading(false));
+    }
+  }, [material]);
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50">
+      <div className="bg-white p-8 rounded-lg shadow-2xl w-full max-w-lg">
+        <h2 className="text-2xl font-bold mb-6">Access Log for {material.topic}</h2>
+        {loading ? (
+          <p>Loading logs...</p>
+        ) : error ? (
+          <p className="text-red-500">{error}</p>
+        ) : logs.length > 0 ? (
+          <ul className="space-y-2 max-h-96 overflow-y-auto">
+            {logs.map((log) => (
+              <li key={log.user_id} className="flex justify-between p-2 bg-gray-50 rounded">
+                <span>{log.user_name}</span>
+                <span className="text-gray-500">{new Date(log.accessed_at).toLocaleString()}</span>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p>No access logs found for this material.</p>
+        )}
+        <div className="flex justify-end mt-6">
+          <button
+            onClick={onClose}
+            className="py-2 px-4 text-sm font-medium text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200"
+          >
+            Close
+          </button>
+        </div>
       </div>
     </div>
   );

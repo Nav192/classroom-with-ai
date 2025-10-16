@@ -5,7 +5,6 @@ import api from "../services/api";
 export default function CreateClassModal({ setIsModalOpen, onClassCreated }) {
   const [className, setClassName] = useState("");
   const [grade, setGrade] = useState("10");
-  const [teacherName, setTeacherName] = useState(""); // Initialize to empty string
   const [isCreating, setIsCreating] = useState(false);
   const [error, setError] = useState("");
 
@@ -14,8 +13,8 @@ export default function CreateClassModal({ setIsModalOpen, onClassCreated }) {
     setIsCreating(true);
     setError("");
     try {
-      console.log("Sending class data:", { class_name: className, grade: grade, teacher_name: teacherName }); // Debug log
-      await api.post("/classes", { class_name: className, grade: grade, teacher_name: teacherName });
+      console.log("Sending class data:", { class_name: className, grade: grade }); // Debug log
+      await api.post("/classes", { class_name: className, grade: grade });
       onClassCreated();
     } catch (err) {
       console.error("Error creating class:", err.response?.data || err.message);
@@ -42,10 +41,7 @@ export default function CreateClassModal({ setIsModalOpen, onClassCreated }) {
               <option value="12">12</option>
             </select>
           </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Teacher Name</label>
-            <input type="text" value={teacherName} onChange={(e) => setTeacherName(e.target.value)} placeholder="e.g., Mr. Smith" className="w-full px-3 py-2 bg-gray-50 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" required />
-          </div>
+
           {error && <p className="text-sm text-red-500">{error}</p>}
           <div className="flex justify-end gap-4 pt-4">
             <button type="button" onClick={() => setIsModalOpen(false)} className="py-2 px-4 text-sm font-medium text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200">Cancel</button>

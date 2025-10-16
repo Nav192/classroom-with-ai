@@ -18,17 +18,20 @@ export default function MaterialsTab({ classId }) {
 
   const handleAction = async (materialId, action) => {
     try {
+      console.log("handleAction called with materialId:", materialId, "and action:", action);
       const res = await api.get(`/materials/download/${materialId}`);
       if (res.data && res.data.download_url) {
         window.open(res.data.download_url, "_blank");
-        if (action === 'view') {
-          await api.post(`/progress/material/${materialId}/complete`);
-          // Optionally refresh materials to show completion status
-        }
+        
+        console.log("Recording access for material:", materialId);
+        await api.post(`/materials/${materialId}/access`);
+        console.log("Access recorded successfully.");
+
       } else {
         setError("Could not retrieve material link.");
       }
     } catch (err) {
+      console.error("An error occurred during handleAction:", err);
       setError(err.response?.data?.detail || `An error occurred during ${action}.`);
     }
   };

@@ -12,6 +12,7 @@ from supabase import Client
 from typing import List
 from uuid import UUID
 from pydantic import BaseModel
+from datetime import datetime, timezone
 
 from ..dependencies import get_supabase, get_supabase_admin, get_current_user, get_current_teacher_user, verify_class_membership
 
@@ -187,3 +188,98 @@ def delete_material(
         raise HTTPException(status_code=500, detail="Failed to delete material from database.")
 
     return
+
+class MaterialAccessResponse(BaseModel):
+    user_id: UUID
+    accessed_at: str
+    user_name: str
+
+@router.post("/{material_id}/access", status_code=status.HTTP_201_CREATED)
+
+def record_material_access(
+
+    material_id: UUID,
+
+    sb: Client = Depends(get_supabase),
+
+    current_user: dict = Depends(get_current_user),
+
+):
+
+    """Records that a student has accessed a material."""
+
+    user_id = current_user.get("id")
+
+    print(f"Recording access for material {material_id} for user {user_id}")
+
+
+
+    # Check if the user is a member of the class associated with the material
+
+    material_res = sb.table("materials").select("class_id").eq("id", str(material_id)).single().execute()
+
+    if not material_res.data:
+
+        print("Material not found")
+
+        raise HTTPException(status_code=404, detail="Material not found.")
+
+
+
+    class_id = material_res.data['class_id']
+
+
+
+    member_res = sb.table("class_members").select("id").eq("class_id", str(class_id)).eq("user_id", user_id).execute()
+
+    if not member_res.data:
+
+        print("User is not a member of the class")
+
+        raise HTTPException(status_code=403, detail="You are not a member of this class.")
+
+
+
+    # Insert or update a record into the material_access table
+
+    access_record = {
+
+        "material_id": str(material_id),
+
+        "user_id": user_id,
+
+        "accessed_at": datetime.now(timezone.utc).isoformat(), # Always update accessed_at to current time
+
+    }
+
+
+
+    print("Upserting access record:", access_record)
+
+
+
+    upsert_res = sb.table("material_access").upsert(
+
+        access_record,
+
+        on_conflict="material_id,user_id"
+
+    ).execute()
+
+
+
+    print("Upsert response data:", upsert_res.data)
+
+
+
+    if not upsert_res.data:
+
+        print("Failed to upsert access record")
+
+        raise HTTPException(status_code=500, detail="Failed to record material access.")
+
+
+
+    print("Access recorded successfully")
+
+    return {"message": "Material access recorded successfully."}

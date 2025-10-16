@@ -1,25 +1,30 @@
-import { useState } from 'react';
-import { Link } from 'react-router-dom';
-import api from '../services/api';
-import { Mail, AlertCircle } from 'lucide-react';
+import { useState } from "react";
+import { Link } from "react-router-dom";
+import api from "../services/api";
+import { Mail, AlertCircle } from "lucide-react";
 import Logo from "../assets/SMA.png";
 
 export default function ForgotPassword() {
-  const [email, setEmail] = useState('');
+  const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
-  const [message, setMessage] = useState('');
-  const [error, setError] = useState('');
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
-    setMessage('');
-    setError('');
+    setMessage("");
+    setError("");
     try {
-      await api.post('/auth/forgot-password', { email });
-      setMessage('If your email is registered, you will receive a password reset link.');
+      await api.post("/auth/forgot-password", { email });
+      setMessage(
+        "If your email is registered, you will receive a password reset link."
+      );
     } catch (err) {
-      setError('Failed to send password reset request. Please try again.');
+      setError(
+        err.response?.data?.message ||
+          "Failed to send password reset request. Please try again."
+      );
     } finally {
       setLoading(false);
     }
@@ -81,9 +86,9 @@ export default function ForgotPassword() {
                            rounded-xl font-semibold shadow-lg overflow-hidden group
                            hover:scale-[1.03] focus:outline-none focus-visible:ring-2 focus-visible:ring-purple-400 
                            disabled:opacity-50 transition-all duration-300"
-                style={{ backgroundColor: '#341539' }}
+                style={{ backgroundColor: "#341539" }}
               >
-                {loading ? 'Sending...' : 'Send Reset Link'}
+                {loading ? "Sending..." : "Send Reset Link"}
               </button>
             </div>
           </form>
@@ -97,7 +102,10 @@ export default function ForgotPassword() {
         )}
 
         <div className="text-sm text-center text-gray-200 dark:text-gray-300">
-          <Link to="/login" className="font-medium text-pink-300 hover:text-pink-200 underline underline-offset-2">
+          <Link
+            to="/login"
+            className="font-medium text-pink-300 hover:text-pink-200 underline underline-offset-2"
+          >
             Back to Login
           </Link>
         </div>

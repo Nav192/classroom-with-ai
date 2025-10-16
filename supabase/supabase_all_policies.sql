@@ -14,6 +14,7 @@
   ALTER TABLE cheating_logs DISABLE ROW LEVEL SECURITY;
   ALTER TABLE materials DISABLE ROW LEVEL SECURITY;
   ALTER TABLE materials_progress DISABLE ROW LEVEL SECURITY;
+  ALTER TABLE material_access DISABLE ROW LEVEL SECURITY;
   ALTER TABLE quiz_attempts DISABLE ROW LEVEL SECURITY;
 
   DROP POLICY IF EXISTS "Allow authenticated users to read their own quiz attempts." ON quiz_attempts;
@@ -61,6 +62,10 @@
   DROP POLICY IF EXISTS "Allow students to manage their own materials progress" ON materials_progress;
   DROP POLICY IF EXISTS "Allow teachers to view progress of students in classes they created" ON
   materials_progress;
+  DROP POLICY IF EXISTS "Allow students to insert their own access records" ON material_access;
+  DROP POLICY IF EXISTS "Allow students to view their own access records" ON material_access;
+  DROP POLICY IF EXISTS "Allow teachers to view access records for their classes" ON material_access;
+  DROP POLICY IF EXISTS "Allow students to update their own access records" ON material_access;
 
 
   -- ============================================================================
@@ -78,6 +83,7 @@
   ALTER TABLE cheating_logs ENABLE ROW LEVEL SECURITY;
   ALTER TABLE materials ENABLE ROW LEVEL SECURITY;
   ALTER TABLE materials_progress ENABLE ROW LEVEL SECURITY;
+  ALTER TABLE material_access ENABLE ROW LEVEL SECURITY;
   ALTER TABLE quiz_attempts ENABLE ROW LEVEL SECURITY;
 
 
@@ -229,6 +235,45 @@
   USING (user_id IN (SELECT user_id FROM public.class_members WHERE class_id IN (SELECT id FROM
   public.classes WHERE created_by = auth.uid())));
 
+
+  -- material_access table policies
+  ------------------------------------------------------------------------------
+  -- Allow students to insert their own access records
+  CREATE POLICY "Allow students to insert their own access records"
+  ON material_access
+  FOR INSERT
+  TO authenticated
+  WITH CHECK (auth.uid() = user_id);
+
+  -- Allow students to view their own access records
+  CREATE POLICY "Allow students to view their own access records"
+  ON material_access
+  FOR SELECT
+  TO authenticated
+  USING (auth.uid() = user_id);
+
+  -- Allow teachers to view access records for their classes
+  CREATE POLICY "Allow teachers to view access records for their classes"
+  ON material_access
+  FOR SELECT
+  TO authenticated
+  USING (
+    EXISTS (
+      SELECT 1
+      FROM materials m
+      JOIN classes c ON m.class_id = c.id
+      WHERE m.id = material_access.material_id
+      AND c.created_by = auth.uid()
+    )
+  );
+
+  -- Allow students to update their own access records
+  CREATE POLICY "Allow students to update their own access records"
+  ON material_access
+  FOR UPDATE
+  TO authenticated
+  USING (auth.uid() = user_id)
+  WITH CHECK (auth.uid() = user_id);
 
   -- quiz_attempts table policies
   ------------------------------------------------------------------------------

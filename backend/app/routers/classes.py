@@ -11,7 +11,6 @@ router = APIRouter()
 class ClassCreate(BaseModel):
     class_name: str
     grade: str
-    teacher_name: Optional[str] = None
 
 class ClassJoin(BaseModel):
     class_code: str
@@ -63,11 +62,15 @@ def create_class(
             if not existing_class:
                 break
 
+        # Fetch the teacher's username from the profiles table
+        teacher_profile = db.table("profiles").select("username").eq("id", user.get("id")).single().execute().data
+        teacher_username = teacher_profile["username"] if teacher_profile else "Unknown Teacher"
+
         new_class = db.table("classes").insert({
             "class_name": class_data.class_name,
             "grade": class_data.grade,
             "created_by": user.get("id"),
-            "teacher_name": class_data.teacher_name,
+            "teacher_name": teacher_username,
             "class_code": class_code
         }, returning="representation").execute()
 
@@ -84,8 +87,7 @@ def create_class(
         print(f"DEBUG: class_members upserted for class_id: {new_class_data['id']} and user_id: {user.get('id')}")
 
         # Use the teacher_name provided in the form for this specific class response
-        print(f"DEBUG_GEMINI_V1: class_data.teacher_name before assignment: {class_data.teacher_name}")
-        new_class_data["teacher_name"] = class_data.teacher_name
+
 
         print(f"Returning new_class_data: {new_class_data}")
 
